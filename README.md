@@ -6,7 +6,7 @@ a simple interface
 ## Usage
 
 ```ts
-import { Pty } from "./src/mod.ts";
+import { Pty } from "https://deno.land/x/deno_pty_ffi/mod.ts";
 
 const pty = await Pty.create({
   cmd: "bash",
