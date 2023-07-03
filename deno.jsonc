@@ -3,12 +3,10 @@
     "build": "cd src-rust; cargo build",
     // run the example using locally built rust library
     "dev": "deno task build && deno task dev:fast",
-    // run the example using the remotly published rust library
-    "run": "deno task build && deno task run:fast",
     // the fast varient don't rebuild the rust library
-    // this can be used if there was no change in the rust code
-    "dev:fast": "export RUST_LIB_PATH=$CARGO_TARGET_DIR/debug && deno task run:fast",
-    "run:fast": "deno run --unstable -A example.ts",
+    "dev:fast": "export RUST_LIB_PATH=$CARGO_TARGET_DIR/debug && deno task run",
+    // run the example using the remotly published rust library
+    "run": "deno run --unstable -A example.ts",
     "fmt": "deno fmt; cd src-rust; cargo fmt"
   }
 }

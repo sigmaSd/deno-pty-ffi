@@ -55,7 +55,7 @@ export class Pty {
     const version = "0.1.0";
     // NOTE: replace this url with the correct repo url
     const url =
-      `https://github.com/sigmaSd/scaffold-plug/releases/download/${version}`;
+      `https://github.com/sigmaSd/deno-pty-ffi/releases/download/${version}`;
 
     const lib = await plug.dlopen(
       {
