@@ -1,11 +1,12 @@
+use parking_lot::{Mutex, MutexGuard};
 use portable_pty::{native_pty_system, CommandBuilder, PtySize};
 use serde::{Deserialize, Serialize};
 use std::{
-    ffi::CString,
+    ffi::{CStr, CString},
     mem::ManuallyDrop,
     sync::{
         mpsc::{Receiver, Sender},
-        Arc, Mutex,
+        Arc,
     },
 };
 mod utils;
@@ -26,7 +27,7 @@ struct Command {
 }
 
 impl Pty {
-    fn new(command: Command) -> Result<Self> {
+    fn create(command: Command) -> Result<Self> {
         // Use the native pty implementation for the system
         let pty_system = native_pty_system();
 
@@ -45,12 +46,12 @@ impl Pty {
 
         let mut cmd = CommandBuilder::new(command.cmd);
         cmd.args(&command.args);
-        cmd.cwd(std::env::current_dir().unwrap());
+        cmd.cwd(std::env::current_dir()?);
         for env in command.env {
             cmd.env(env.0, env.1);
         }
 
-        let _child = pair.slave.spawn_command(cmd).unwrap();
+        let _child = pair.slave.spawn_command(cmd)?;
 
         // Release any handles owned by the slave: we don't need it now
         // that we've spawned the child.
@@ -61,60 +62,104 @@ impl Pty {
         // where read/write buffers fill and block either your process
         // or the spawned process.
         let (tx_read, rx_read) = std::sync::mpsc::channel();
-        let mut reader = pair.master.try_clone_reader().unwrap();
+        let mut reader = pair.master.try_clone_reader()?;
         std::thread::spawn(move || {
             let mut buf = [0; 512];
             loop {
-                let n = reader.read(&mut buf).unwrap();
-                let _ = tx_read.send(String::from_utf8(buf[0..n].to_vec()).unwrap());
+                let n = reader.read(&mut buf).expect("failed to read data");
+                // ignore send error, it errors when the recevier closes
+                let _ = tx_read
+                    .send(String::from_utf8(buf[0..n].to_vec()).expect("data is not valid utf8"));
             }
         });
 
-        let mut writer = pair.master.take_writer().unwrap();
+        let mut writer = pair.master.take_writer()?;
         let (tx_write, rx_write): (Sender<String>, _) = std::sync::mpsc::channel();
         std::thread::spawn(move || {
             while let Ok(buf) = rx_write.recv() {
-                writer.write(&buf.into_bytes()).unwrap();
+                writer
+                    .write(&buf.into_bytes())
+                    .expect("failed to write data");
             }
         });
 
         Ok(Self { rx_read, tx_write })
+    }
+
+    fn read(&self) -> Result<String> {
+        Ok(self.rx_read.recv()?)
+    }
+
+    fn write(&self, data: String) -> Result<()> {
+        Ok(self.tx_write.send(data)?)
     }
 }
 
 #[no_mangle]
 // can't use new since its a reserved keyword in javascript
 pub unsafe extern "C" fn create(command: *mut i8) -> *const Mutex<Pty> {
-    let command: Command = cstr_to_type(command).unwrap();
-    let Ok(pty) = Pty::new(command) else {
+    fn inner(command: Command) -> Result<Arc<Mutex<Pty>>> {
+        let pty = Pty::create(command)?;
+        Ok(Arc::new(Mutex::new(pty)))
+    }
+
+    let Ok(command) = cstr_to_type::<Command>(command) else {
         return std::ptr::null();
     };
-    Arc::into_raw(Arc::new(Mutex::new(pty)))
+    if let Ok(result) = inner(command) {
+        Arc::into_raw(result)
+    } else {
+        std::ptr::null()
+    }
 }
+
 #[no_mangle]
 pub unsafe extern "C" fn read(this: *const Mutex<Pty>) -> *mut i8 {
-    let this = ManuallyDrop::new(Arc::from_raw(this));
-    let this = this.lock().expect("failed to aquire lock"); // is it safe ?
-    if let Ok(r) = this.rx_read.recv() {
-        return CString::new(r).unwrap().into_raw();
+    fn inner(this: MutexGuard<Pty>) -> Result<CString> {
+        Ok(CString::new(this.read()?)?)
     }
-    std::ptr::null_mut()
+
+    let this = ManuallyDrop::new(Arc::from_raw(this));
+    let this = this.lock();
+    if let Ok(result) = inner(this) {
+        result.into_raw()
+    } else {
+        std::ptr::null_mut()
+    }
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn write(this: *const Mutex<Pty>, data: *mut i8) {
-    let this = ManuallyDrop::new(Arc::from_raw(this));
-    let this = this.lock().expect("failed to aquire lock"); // is it safe ?
+/// returns -1 on failure
+pub unsafe extern "C" fn write(this: *const Mutex<Pty>, data: *mut i8) -> isize {
+    fn inner(this: MutexGuard<Pty>, data: &CStr) -> Result<()> {
+        let data_str = data.to_str()?.to_owned(); // NOTE: can we send str in the channels ?
+        this.write(data_str)
+    }
 
-    let data = CString::from_raw(data);
-    let data_str = data.clone().into_string().unwrap();
-    this.tx_write.send(data_str).unwrap();
-    std::mem::forget(data);
+    let this = ManuallyDrop::new(Arc::from_raw(this));
+    let this = this.lock();
+    let data = ManuallyDrop::new(CString::from_raw(data));
+    if let Ok(_result) = inner(this, data.as_ref()) {
+        0
+    } else {
+        -1
+    }
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn tmp_dir() -> *mut i8 {
-    CString::new(std::env::temp_dir().to_str().unwrap().to_owned())
-        .unwrap()
-        .into_raw()
+    fn inner() -> Result<CString> {
+        Ok(CString::new(
+            std::env::temp_dir()
+                .to_str()
+                .ok_or("path is not valid utf8?")?
+                .to_owned(),
+        )?)
+    }
+
+    if let Ok(result) = inner() {
+        result.into_raw()
+    } else {
+        std::ptr::null_mut()
+    }
 }
