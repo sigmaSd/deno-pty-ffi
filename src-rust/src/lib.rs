@@ -78,7 +78,7 @@ impl Pty {
         std::thread::spawn(move || {
             while let Ok(buf) = rx_write.recv() {
                 writer
-                    .write(&buf.into_bytes())
+                    .write_all(&buf.into_bytes())
                     .expect("failed to write data");
             }
         });
@@ -97,6 +97,8 @@ impl Pty {
 
 #[no_mangle]
 // can't use new since its a reserved keyword in javascript
+/// # Safety
+/// needs a valid pointer to a Command
 pub unsafe extern "C" fn create(command: *mut i8) -> *const Mutex<Pty> {
     fn inner(command: Command) -> Result<Arc<Mutex<Pty>>> {
         let pty = Pty::create(command)?;
@@ -114,6 +116,8 @@ pub unsafe extern "C" fn create(command: *mut i8) -> *const Mutex<Pty> {
 }
 
 #[no_mangle]
+/// # Safety
+/// needs a valid pointer to a Pty
 pub unsafe extern "C" fn read(this: *const Mutex<Pty>) -> *mut i8 {
     fn inner(this: MutexGuard<Pty>) -> Result<CString> {
         Ok(CString::new(this.read()?)?)
@@ -130,6 +134,8 @@ pub unsafe extern "C" fn read(this: *const Mutex<Pty>) -> *mut i8 {
 
 #[no_mangle]
 /// returns -1 on failure
+/// # Safety
+/// needs a valid pointer to a Pty and a CString
 pub unsafe extern "C" fn write(this: *const Mutex<Pty>, data: *mut i8) -> i8 {
     fn inner(this: MutexGuard<Pty>, data: &CStr) -> Result<()> {
         let data_str = data.to_str()?.to_owned(); // NOTE: can we send str in the channels ?
@@ -147,7 +153,7 @@ pub unsafe extern "C" fn write(this: *const Mutex<Pty>, data: *mut i8) -> i8 {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn tmp_dir() -> *mut i8 {
+pub extern "C" fn tmp_dir() -> *mut i8 {
     fn inner() -> Result<CString> {
         Ok(CString::new(
             std::env::temp_dir()
