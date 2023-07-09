@@ -95,11 +95,14 @@ impl Pty {
     }
 }
 
+// note: need to be careful with names with no_mangle extern C
+// for example extern C write, will cause weird bugs
+
 #[no_mangle]
 // can't use new since its a reserved keyword in javascript
 /// # Safety
 /// needs a valid pointer to a Command
-pub unsafe extern "C" fn create(command: *mut i8) -> *const Mutex<Pty> {
+pub unsafe extern "C" fn pty_create(command: *mut i8) -> *const Mutex<Pty> {
     fn inner(command: Command) -> Result<Arc<Mutex<Pty>>> {
         let pty = Pty::create(command)?;
         Ok(Arc::new(Mutex::new(pty)))
@@ -118,7 +121,7 @@ pub unsafe extern "C" fn create(command: *mut i8) -> *const Mutex<Pty> {
 #[no_mangle]
 /// # Safety
 /// needs a valid pointer to a Pty
-pub unsafe extern "C" fn read(this: *const Mutex<Pty>) -> *mut i8 {
+pub unsafe extern "C" fn pty_read(this: *const Mutex<Pty>) -> *mut i8 {
     fn inner(this: MutexGuard<Pty>) -> Result<CString> {
         Ok(CString::new(this.read()?)?)
     }
@@ -136,7 +139,7 @@ pub unsafe extern "C" fn read(this: *const Mutex<Pty>) -> *mut i8 {
 /// returns -1 on failure
 /// # Safety
 /// needs a valid pointer to a Pty and a CString
-pub unsafe extern "C" fn write(this: *const Mutex<Pty>, data: *mut i8) -> i8 {
+pub unsafe extern "C" fn pty_write(this: *const Mutex<Pty>, data: *mut i8) -> i8 {
     fn inner(this: MutexGuard<Pty>, data: &CStr) -> Result<()> {
         let data_str = data.to_str()?.to_owned(); // NOTE: can we send str in the channels ?
         this.write(data_str)

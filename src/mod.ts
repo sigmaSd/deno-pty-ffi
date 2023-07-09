@@ -12,13 +12,13 @@ export interface Command {
 }
 
 interface PtyApi extends Deno.ForeignLibraryInterface {
-  create: { parameters: ["buffer"]; result: "pointer" };
-  read: {
+  pty_create: { parameters: ["buffer"]; result: "pointer" };
+  pty_read: {
     parameters: ["pointer"];
     result: "buffer";
     nonblocking: boolean;
   };
-  write: {
+  pty_write: {
     parameters: ["pointer", "buffer"];
     result: "i8";
     nonblocking: boolean;
@@ -71,13 +71,13 @@ export class Pty {
         },
       },
       {
-        create: { parameters: ["buffer"], result: "pointer" },
-        read: {
+        pty_create: { parameters: ["buffer"], result: "pointer" },
+        pty_read: {
           parameters: ["pointer"],
           result: "buffer",
           nonblocking: true,
         },
-        write: {
+        pty_write: {
           parameters: ["pointer", "buffer"],
           result: "i8",
           nonblocking: true,
@@ -89,18 +89,18 @@ export class Pty {
       } satisfies PtyApi,
     );
 
-    const pty = lib.symbols.create(encode_json_cstring(command));
+    const pty = lib.symbols.pty_create(encode_json_cstring(command));
     return new Pty({ lib, pty });
   }
 
   async read() {
-    const data = await this.#lib.symbols.read(this.#this);
+    const data = await this.#lib.symbols.pty_read(this.#this);
     if (data === null) throw "failed to read data";
     return decode_cstring(data);
   }
 
   async write(data: string) {
-    const result = await this.#lib.symbols.write(
+    const result = await this.#lib.symbols.pty_write(
       this.#this,
       encode_cstring(data),
     ) as 0 | -1;
