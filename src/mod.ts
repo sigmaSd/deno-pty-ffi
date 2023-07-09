@@ -20,7 +20,7 @@ interface PtyApi extends Deno.ForeignLibraryInterface {
   };
   write: {
     parameters: ["pointer", "buffer"];
-    result: "void";
+    result: "i8";
     nonblocking: boolean;
   };
   tmp_dir: {
@@ -79,7 +79,7 @@ export class Pty {
         },
         write: {
           parameters: ["pointer", "buffer"],
-          result: "void",
+          result: "i8",
           nonblocking: true,
         },
         tmp_dir: {
@@ -95,14 +95,21 @@ export class Pty {
 
   async read() {
     const data = await this.#lib.symbols.read(this.#this);
-    return decode_cstring(data!);
+    if (data === null) throw "failed to read data";
+    return decode_cstring(data);
   }
 
   async write(data: string) {
-    await this.#lib.symbols.write(this.#this, encode_cstring(data));
+    const result = await this.#lib.symbols.write(
+      this.#this,
+      encode_cstring(data),
+    ) as 0 | -1;
+    if (result === -1) throw "failed to write data: " + data;
   }
 
   tmpDir() {
-    return decode_cstring(this.#lib.symbols.tmp_dir()!);
+    const tempDir = this.#lib.symbols.tmp_dir();
+    if (tempDir === null) throw "failed to get temp dir";
+    return decode_cstring(tempDir);
   }
 }

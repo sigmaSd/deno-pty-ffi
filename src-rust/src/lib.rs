@@ -130,7 +130,7 @@ pub unsafe extern "C" fn read(this: *const Mutex<Pty>) -> *mut i8 {
 
 #[no_mangle]
 /// returns -1 on failure
-pub unsafe extern "C" fn write(this: *const Mutex<Pty>, data: *mut i8) -> isize {
+pub unsafe extern "C" fn write(this: *const Mutex<Pty>, data: *mut i8) -> i8 {
     fn inner(this: MutexGuard<Pty>, data: &CStr) -> Result<()> {
         let data_str = data.to_str()?.to_owned(); // NOTE: can we send str in the channels ?
         this.write(data_str)
