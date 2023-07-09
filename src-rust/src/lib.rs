@@ -172,3 +172,50 @@ pub extern "C" fn tmp_dir() -> *mut i8 {
         std::ptr::null_mut()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::sync::mpsc;
+
+    use super::*;
+    #[test]
+    fn it_works() {
+        let pty = Arc::new(Mutex::new(
+            Pty::create(Command {
+                cmd: "deno".into(),
+                args: vec!["repl".into()],
+                env: vec![("NO_COLOR".into(), "1".into())],
+            })
+            .unwrap(),
+        ));
+
+        // read header
+        pty.lock().read().unwrap();
+
+        let write_and_expect = |to_write: &'static str, expect: &'static str| {
+            pty.lock().write(to_write.into()).unwrap();
+
+            let (tx, rx) = mpsc::channel();
+            let tx_c = tx.clone();
+            let pty_c = pty.clone();
+            std::thread::spawn(move || loop {
+                let r = pty_c.lock().read().unwrap();
+                if r.contains(expect) {
+                    tx.send(Ok(())).unwrap();
+                    break;
+                }
+            });
+            std::thread::spawn(move || {
+                std::thread::sleep(std::time::Duration::from_secs(5));
+                tx_c.send(Err("timeout")).unwrap();
+            });
+            let r = rx.recv().unwrap();
+            if let Err(e) = r {
+                panic!("{e}");
+            }
+        };
+
+        write_and_expect("5+4\n", "9");
+        write_and_expect("let a = 4; a + a\n", "8");
+    }
+}

@@ -7,6 +7,9 @@
     "dev:fast": "export RUST_LIB_PATH=$CARGO_TARGET_DIR/debug && deno task run",
     // run the example using the remotly published rust library
     "run": "deno run --unstable -A example.ts",
-    "fmt": "deno fmt; cd src-rust; cargo fmt"
+    "fmt": "deno fmt; cd src-rust; cargo fmt",
+    "test": "deno task test:rust && deno task test:deno",
+    "test:rust": "cd src-rust; cargo test",
+    "test:deno": "export RUST_LIB_PATH=$CARGO_TARGET_DIR/debug && deno test --unstable -A",
   }
 }

@@ -112,4 +112,9 @@ export class Pty {
     if (tempDir === null) throw "failed to get temp dir";
     return decode_cstring(tempDir);
   }
+
+  //NOTE: rewrite this with `using` when typescript 5.2 lands
+  close() {
+    this.#lib.close();
+  }
 }
