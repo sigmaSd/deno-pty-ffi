@@ -65,8 +65,8 @@ export class Pty {
         cache: Deno.env.get("RUST_LIB_PATH") ? "reloadAll" : "use",
         suffixes: {
           darwin: {
-            aarch64: "_aarch64.dylib",
-            x86_64: "_x86_64.dylib",
+            aarch64: "_aarch64",
+            x86_64: "_x86_64",
           },
         },
       },
