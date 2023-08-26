@@ -27,7 +27,7 @@ jobs:
 
     - uses: goto-bus-stop/setup-zig@v1
       with:
-        version: 0.11.0
+        version: 0.10.1
       if: runner.os == 'Linux'
 
     - name: Build
