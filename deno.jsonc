@@ -1,15 +1,15 @@
 {
   "tasks": {
-    "build": "cd src-rust; cargo build",
+    "build": "cargo build --manifest-path src-rust/Cargo.toml",
     // run the example using locally built rust library
     "dev": "deno task build && deno task dev:fast",
     // the fast varient don't rebuild the rust library
     "dev:fast": "export RUST_LIB_PATH=$CARGO_TARGET_DIR/debug && deno task run",
     // run the example using the remotly published rust library
     "run": "deno run --unstable -A example.ts",
-    "fmt": "deno fmt; cd src-rust; cargo fmt",
+    "fmt": "deno fmt && cargo fmt --manifest-path src-rust/Cargo.toml",
     "test": "deno task test:rust && deno task test:deno",
-    "test:rust": "cd src-rust; cargo test",
+    "test:rust": "cargo test --manifest-path src-rust/Cargo.toml",
     "test:deno": "deno task build && export RUST_LIB_PATH=$CARGO_TARGET_DIR/debug && deno test --unstable -A"
   }
 }

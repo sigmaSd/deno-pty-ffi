@@ -1,5 +1,5 @@
 use parking_lot::{Mutex, MutexGuard};
-use portable_pty::{native_pty_system, CommandBuilder, PtySize};
+use portable_pty::{native_pty_system, CommandBuilder, PtySize, SlavePty};
 use serde::{Deserialize, Serialize};
 use std::{
     ffi::{CStr, CString},
@@ -17,6 +17,10 @@ pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 pub struct Pty {
     rx_read: Receiver<String>,
     tx_write: Sender<String>,
+    // keep the slave alive
+    // so windows works
+    // https://github.com/wez/wezterm/issues/4206
+    _slave: Box<dyn SlavePty + Send>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -45,6 +49,8 @@ impl Pty {
         })?;
 
         let mut cmd = CommandBuilder::new(command.cmd);
+        // https://github.com/wez/wezterm/issues/4205
+        cmd.env("PATH", std::env::var("PATH")?);
         cmd.args(&command.args);
         cmd.cwd(std::env::current_dir()?);
         for env in command.env {
@@ -52,10 +58,7 @@ impl Pty {
         }
 
         let _child = pair.slave.spawn_command(cmd)?;
-
-        // Release any handles owned by the slave: we don't need it now
-        // that we've spawned the child.
-        drop(pair.slave);
+        let slave = pair.slave;
 
         // Read the output in another thread.
         // This is important because it is easy to encounter a situation
@@ -83,7 +86,11 @@ impl Pty {
             }
         });
 
-        Ok(Self { rx_read, tx_write })
+        Ok(Self {
+            rx_read,
+            tx_write,
+            _slave: slave,
+        })
     }
 
     fn read(&self) -> Result<String> {
@@ -215,7 +222,7 @@ mod tests {
             }
         };
 
-        write_and_expect("5+4\n", "9");
-        write_and_expect("let a = 4; a + a\n", "8");
+        write_and_expect("5+4\n\r", "9");
+        write_and_expect("let a = 4; a + a\n\r", "8");
     }
 }

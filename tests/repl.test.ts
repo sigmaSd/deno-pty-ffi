@@ -11,8 +11,8 @@ Deno.test("smoke", async () => {
   // read header
   await pty.read();
 
-  await write_and_expect(pty, "5+4\n", "9");
-  await write_and_expect(pty, "let a = 4; a + a\n", "8");
+  await write_and_expect(pty, "5+4\n\r", "9");
+  await write_and_expect(pty, "let a = 4; a + a\n\r", "8");
 
   pty.close();
 });
