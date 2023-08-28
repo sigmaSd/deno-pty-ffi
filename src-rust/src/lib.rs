@@ -105,10 +105,14 @@ impl Pty {
 // note: need to be careful with names with no_mangle extern C
 // for example extern C write, will cause weird bugs
 
+/// # Safety
+/// - Requires a valid pointer to a Command
+/// - Requires a valid pointer to a buffer of size 8
+/// to write the result to
+///
+/// Returns -1 on error
 #[no_mangle]
 // can't use new since its a reserved keyword in javascript
-/// # Safety
-/// needs a valid pointer to a Command
 pub unsafe extern "C" fn pty_create(command: *mut i8, result: *mut usize) -> i8 {
     let pty = (|| -> Result<Arc<Mutex<Pty>>> {
         let command = cstr_to_type::<Command>(command)?;
@@ -129,9 +133,13 @@ pub unsafe extern "C" fn pty_create(command: *mut i8, result: *mut usize) -> i8 
     }
 }
 
-#[no_mangle]
 /// # Safety
-/// needs a valid pointer to a Pty
+/// - Requires a valid pointer to a Pty
+/// - Requires a valid pointer to a buffer of size 8
+/// to write the result to
+///
+/// Returns -1 on error
+#[no_mangle]
 pub unsafe extern "C" fn pty_read(this: *const Mutex<Pty>, result: *mut usize) -> i8 {
     match (|| -> Result<CString> {
         let this = ManuallyDrop::new(Arc::from_raw(this));
@@ -151,10 +159,14 @@ pub unsafe extern "C" fn pty_read(this: *const Mutex<Pty>, result: *mut usize) -
     }
 }
 
-#[no_mangle]
-/// returns -1 on failure
 /// # Safety
-/// needs a valid pointer to a Pty and a CString
+/// - Requires a valid pointer to a Pty
+/// - Requires a valid pointer to data encoded as Cstring
+/// - Requires a valid pointer to a buffer of size 8
+/// to write the result to
+///
+/// Returns -1 on error
+#[no_mangle]
 pub unsafe extern "C" fn pty_write(
     this: *const Mutex<Pty>,
     data: *mut i8,
@@ -179,6 +191,14 @@ pub unsafe extern "C" fn pty_write(
     }
 }
 
+/// # Safety
+/// Requires a pointer to a buffer of size 8 to write the result to
+///
+/// The result is either
+/// - tmpDir as cstring
+/// - error as cstring
+///
+/// Returns -1 on error
 #[no_mangle]
 pub unsafe extern "C" fn tmp_dir(result: *mut usize) -> i8 {
     fn inner() -> Result<CString> {
