@@ -144,7 +144,8 @@ pub unsafe extern "C" fn pty_read(this: *const Mutex<Pty>, result: *mut usize) -
     match (|| -> Result<CString> {
         let this = ManuallyDrop::new(Arc::from_raw(this));
         let this = this.lock();
-        Ok(CString::new(this.read()?)?)
+        // TODO: add a test for null byte inside str from read
+        Ok(CString::new(this.read()?.replace('\0', ""))?)
     })() {
         Ok(data) => {
             *result = data.into_raw() as _;
