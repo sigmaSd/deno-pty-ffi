@@ -109,36 +109,45 @@ impl Pty {
 // can't use new since its a reserved keyword in javascript
 /// # Safety
 /// needs a valid pointer to a Command
-pub unsafe extern "C" fn pty_create(command: *mut i8) -> *const Mutex<Pty> {
-    fn inner(command: Command) -> Result<Arc<Mutex<Pty>>> {
+pub unsafe extern "C" fn pty_create(command: *mut i8, result: *mut usize) -> i8 {
+    let pty = (|| -> Result<Arc<Mutex<Pty>>> {
+        let command = cstr_to_type::<Command>(command)?;
         let pty = Pty::create(command)?;
         Ok(Arc::new(Mutex::new(pty)))
-    }
-
-    let Ok(command) = cstr_to_type::<Command>(command) else {
-        return std::ptr::null();
-    };
-    if let Ok(result) = inner(command) {
-        Arc::into_raw(result)
-    } else {
-        std::ptr::null()
+    })();
+    match pty {
+        Ok(pty) => {
+            *result = Arc::into_raw(pty) as usize;
+            0
+        }
+        Err(err) => {
+            *result = CString::new(err.to_string())
+                .expect("err is valid cstring")
+                .into_raw() as _;
+            -1
+        }
     }
 }
 
 #[no_mangle]
 /// # Safety
 /// needs a valid pointer to a Pty
-pub unsafe extern "C" fn pty_read(this: *const Mutex<Pty>) -> *mut i8 {
-    fn inner(this: MutexGuard<Pty>) -> Result<CString> {
+pub unsafe extern "C" fn pty_read(this: *const Mutex<Pty>, result: *mut usize) -> i8 {
+    match (|| -> Result<CString> {
+        let this = ManuallyDrop::new(Arc::from_raw(this));
+        let this = this.lock();
         Ok(CString::new(this.read()?)?)
-    }
-
-    let this = ManuallyDrop::new(Arc::from_raw(this));
-    let this = this.lock();
-    if let Ok(result) = inner(this) {
-        result.into_raw()
-    } else {
-        std::ptr::null_mut()
+    })() {
+        Ok(data) => {
+            *result = data.into_raw() as _;
+            0
+        }
+        Err(err) => {
+            *result = CString::new(err.to_string())
+                .expect("err is valid cstring")
+                .into_raw() as _;
+            -1
+        }
     }
 }
 
@@ -146,7 +155,11 @@ pub unsafe extern "C" fn pty_read(this: *const Mutex<Pty>) -> *mut i8 {
 /// returns -1 on failure
 /// # Safety
 /// needs a valid pointer to a Pty and a CString
-pub unsafe extern "C" fn pty_write(this: *const Mutex<Pty>, data: *mut i8) -> i8 {
+pub unsafe extern "C" fn pty_write(
+    this: *const Mutex<Pty>,
+    data: *mut i8,
+    result: *mut usize,
+) -> i8 {
     fn inner(this: MutexGuard<Pty>, data: &CStr) -> Result<()> {
         let data_str = data.to_str()?.to_owned(); // NOTE: can we send str in the channels ?
         this.write(data_str)
@@ -155,15 +168,19 @@ pub unsafe extern "C" fn pty_write(this: *const Mutex<Pty>, data: *mut i8) -> i8
     let this = ManuallyDrop::new(Arc::from_raw(this));
     let this = this.lock();
     let data = ManuallyDrop::new(CString::from_raw(data));
-    if let Ok(_result) = inner(this, data.as_ref()) {
-        0
-    } else {
-        -1
+    match inner(this, data.as_ref()) {
+        Ok(_) => 0,
+        Err(err) => {
+            *result = CString::new(err.to_string())
+                .expect("err is valid cstring")
+                .into_raw() as _;
+            -1
+        }
     }
 }
 
 #[no_mangle]
-pub extern "C" fn tmp_dir() -> *mut i8 {
+pub unsafe extern "C" fn tmp_dir(result: *mut usize) -> i8 {
     fn inner() -> Result<CString> {
         Ok(CString::new(
             std::env::temp_dir()
@@ -173,10 +190,17 @@ pub extern "C" fn tmp_dir() -> *mut i8 {
         )?)
     }
 
-    if let Ok(result) = inner() {
-        result.into_raw()
-    } else {
-        std::ptr::null_mut()
+    match inner() {
+        Ok(data) => {
+            *result = data.into_raw() as _;
+            0
+        }
+        Err(err) => {
+            *result = CString::new(err.to_string())
+                .expect("err is valid cstring")
+                .into_raw() as _;
+            -1
+        }
     }
 }
 

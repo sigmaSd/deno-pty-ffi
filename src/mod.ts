@@ -12,20 +12,20 @@ export interface Command {
 }
 
 interface PtyApi extends Deno.ForeignLibraryInterface {
-  pty_create: { parameters: ["buffer"]; result: "pointer" };
+  pty_create: { parameters: ["buffer", "buffer"]; result: "i8" };
   pty_read: {
-    parameters: ["pointer"];
-    result: "buffer";
-    nonblocking: boolean;
-  };
-  pty_write: {
     parameters: ["pointer", "buffer"];
     result: "i8";
     nonblocking: boolean;
   };
+  pty_write: {
+    parameters: ["pointer", "buffer", "buffer"];
+    result: "i8";
+    nonblocking: boolean;
+  };
   tmp_dir: {
-    parameters: [];
-    result: "buffer";
+    parameters: ["buffer"];
+    result: "i8";
   };
 }
 
@@ -70,46 +70,67 @@ export class Pty {
         },
       },
       {
-        pty_create: { parameters: ["buffer"], result: "pointer" },
+        pty_create: { parameters: ["buffer", "buffer"], result: "i8" },
         pty_read: {
-          parameters: ["pointer"],
-          result: "buffer",
-          nonblocking: true,
-        },
-        pty_write: {
           parameters: ["pointer", "buffer"],
           result: "i8",
           nonblocking: true,
         },
+        pty_write: {
+          parameters: ["pointer", "buffer", "buffer"],
+          result: "i8",
+          nonblocking: true,
+        },
         tmp_dir: {
-          parameters: [],
-          result: "buffer",
+          parameters: ["buffer"],
+          result: "i8",
         },
       } satisfies PtyApi,
     );
 
-    const pty = lib.symbols.pty_create(encode_json_cstring(command));
-    return new Pty({ lib, pty });
+    const pty_buf = new Uint8Array(8);
+    const result = lib.symbols.pty_create(
+      encode_json_cstring(command),
+      pty_buf,
+    );
+    const ptr = Deno.UnsafePointer.create(
+      new BigUint64Array(pty_buf.buffer)[0],
+    )!;
+    if (result === -1) throw new Error(decode_cstring(ptr));
+    return new Pty({ lib, pty: ptr });
   }
 
   async read() {
-    const data = await this.#lib.symbols.pty_read(this.#this);
-    if (data === null) throw "failed to read data";
-    return decode_cstring(data);
+    const dataBuf = new Uint8Array(8);
+    const result = await this.#lib.symbols.pty_read(this.#this, dataBuf);
+    const ptr = Deno.UnsafePointer.create(
+      new BigUint64Array(dataBuf.buffer)[0],
+    )!;
+    if (result === -1) throw new Error(decode_cstring(ptr));
+    return decode_cstring(ptr);
   }
 
   async write(data: string) {
+    const errBuf = new Uint8Array(8);
     const result = await this.#lib.symbols.pty_write(
       this.#this,
       encode_cstring(data),
-    ) as 0 | -1;
-    if (result === -1) throw "failed to write data: " + data;
+      errBuf,
+    );
+    const ptr = Deno.UnsafePointer.create(
+      new BigUint64Array(errBuf.buffer)[0],
+    )!;
+    if (result === -1) throw new Error(decode_cstring(ptr));
   }
 
   tmpDir() {
-    const tempDir = this.#lib.symbols.tmp_dir();
-    if (tempDir === null) throw "failed to get temp dir";
-    return decode_cstring(tempDir);
+    const tempDirBuf = new Uint8Array(8);
+    const result = this.#lib.symbols.tmp_dir(tempDirBuf);
+    const ptr = Deno.UnsafePointer.create(
+      new BigUint64Array(tempDirBuf.buffer)[0],
+    )!;
+    if (result === -1) throw new Error(decode_cstring(ptr));
+    return decode_cstring(ptr);
   }
 
   //NOTE: rewrite this with `using` when typescript 5.2 lands
