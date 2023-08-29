@@ -65,6 +65,10 @@ impl Pty {
         let (tx_read, rx_read) = std::sync::mpsc::channel();
 
         let mut child = pair.slave.spawn_command(cmd)?;
+
+        // If we do a pty.read after the process exit, read will hang
+        // Thats why we spawn another thread to wait for the child
+        // and signal its exit
         let tx_read_c = tx_read.clone();
         std::thread::spawn(move || {
             let _ = child.wait();
