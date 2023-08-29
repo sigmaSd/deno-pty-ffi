@@ -32,6 +32,7 @@ interface PtyApi extends Deno.ForeignLibraryInterface {
 export class Pty {
   #lib;
   #this;
+  #processExited = false;
 
   /** We want an async constructor so we can't use this default one*/
   constructor(
@@ -101,16 +102,24 @@ export class Pty {
   }
 
   async read() {
+    if (this.#processExited) return;
     const dataBuf = new Uint8Array(8);
     const result = await this.#lib.symbols.pty_read(this.#this, dataBuf);
     const ptr = Deno.UnsafePointer.create(
       new BigUint64Array(dataBuf.buffer)[0],
     )!;
+    if (result === 99) {
+      /* Process exited */
+      this.#processExited = true;
+      return;
+    }
     if (result === -1) throw new Error(decode_cstring(ptr));
     return decode_cstring(ptr);
   }
 
   async write(data: string) {
+    // NOTE: maybe we should tell the user that the process exited
+    if (this.#processExited) return;
     const errBuf = new Uint8Array(8);
     const result = await this.#lib.symbols.pty_write(
       this.#this,

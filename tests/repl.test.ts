@@ -26,7 +26,7 @@ async function write_and_expect(pty: Pty, toWrite: string, expect: string) {
     (async () => {
       while (1) {
         const r = await pty.read();
-        if (r.includes(expect)) {
+        if (r && r.includes(expect)) {
           return true;
         }
       }

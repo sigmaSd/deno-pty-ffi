@@ -15,12 +15,12 @@ use utils::cstr_to_type;
 pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
 pub struct Pty {
-    rx_read: Receiver<String>,
+    rx_read: Receiver<Message>,
     tx_write: Sender<String>,
     // keep the slave alive
     // so windows works
     // https://github.com/wez/wezterm/issues/4206
-    // _slave: Box<dyn SlavePty + Send>,
+    _slave: Box<dyn SlavePty + Send>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -28,6 +28,11 @@ struct Command {
     cmd: String,
     args: Vec<String>,
     env: Vec<(String, String)>,
+}
+
+enum Message {
+    Data(String),
+    End,
 }
 
 impl Pty {
@@ -57,23 +62,28 @@ impl Pty {
             cmd.env(env.0, env.1);
         }
 
-        let _child = pair.slave.spawn_command(cmd)?;
-        drop(pair.slave);
-        // let slave = pair.slave;
+        let (tx_read, rx_read) = std::sync::mpsc::channel();
+
+        let mut child = pair.slave.spawn_command(cmd)?;
+        let tx_read_c = tx_read.clone();
+        std::thread::spawn(move || {
+            let _ = child.wait();
+            let _ = tx_read_c.send(Message::End);
+        });
 
         // Read the output in another thread.
         // This is important because it is easy to encounter a situation
         // where read/write buffers fill and block either your process
         // or the spawned process.
-        let (tx_read, rx_read) = std::sync::mpsc::channel();
         let mut reader = pair.master.try_clone_reader()?;
         std::thread::spawn(move || {
             let mut buf = [0; 512];
             loop {
                 let n = reader.read(&mut buf).expect("failed to read data");
                 // ignore send error, it errors when the recevier closes
-                let _ = tx_read
-                    .send(String::from_utf8(buf[0..n].to_vec()).expect("data is not valid utf8"));
+                let _ = tx_read.send(Message::Data(
+                    String::from_utf8(buf[0..n].to_vec()).expect("data is not valid utf8"),
+                ));
             }
         });
 
@@ -90,11 +100,11 @@ impl Pty {
         Ok(Self {
             rx_read,
             tx_write,
-            // _slave: slave,
+            _slave: pair.slave,
         })
     }
 
-    fn read(&self) -> Result<String> {
+    fn read(&self) -> Result<Message> {
         Ok(self.rx_read.recv()?)
     }
 
@@ -140,18 +150,30 @@ pub unsafe extern "C" fn pty_create(command: *mut i8, result: *mut usize) -> i8 
 /// to write the result to
 ///
 /// Returns -1 on error
+/// Returns 99 on process exit
 #[no_mangle]
 pub unsafe extern "C" fn pty_read(this: *const Mutex<Pty>, result: *mut usize) -> i8 {
-    match (|| -> Result<CString> {
+    enum R {
+        CStr(CString),
+        End,
+    }
+    match (|| -> Result<R> {
         let this = ManuallyDrop::new(Arc::from_raw(this));
         let this = this.lock();
         // TODO: add a test for null byte inside str from read
-        Ok(CString::new(this.read()?.replace('\0', ""))?)
-    })() {
-        Ok(data) => {
-            *result = data.into_raw() as _;
-            0
+        let msg = this.read()?;
+        match msg {
+            Message::Data(data) => Ok(R::CStr(CString::new(data.replace('\0', ""))?)),
+            Message::End => Ok(R::End),
         }
+    })() {
+        Ok(data) => match data {
+            R::CStr(str) => {
+                *result = str.into_raw() as _;
+                0
+            }
+            R::End => 99,
+        },
         Err(err) => {
             *result = CString::new(err.to_string())
                 .expect("err is valid cstring")
@@ -253,9 +275,14 @@ mod tests {
             let pty_c = pty.clone();
             std::thread::spawn(move || loop {
                 let r = pty_c.lock().read().unwrap();
-                if r.contains(expect) {
-                    tx.send(Ok(())).unwrap();
-                    break;
+                match r {
+                    Message::Data(data) => {
+                        if data.contains(expect) {
+                            tx.send(Ok(())).unwrap();
+                            break;
+                        }
+                    }
+                    Message::End => break,
                 }
             });
             std::thread::spawn(move || {
