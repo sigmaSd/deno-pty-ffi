@@ -20,7 +20,7 @@ pub struct Pty {
     // keep the slave alive
     // so windows works
     // https://github.com/wez/wezterm/issues/4206
-    _slave: Box<dyn SlavePty + Send>,
+    // _slave: Box<dyn SlavePty + Send>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -58,7 +58,8 @@ impl Pty {
         }
 
         let _child = pair.slave.spawn_command(cmd)?;
-        let slave = pair.slave;
+        drop(pair.slave);
+        // let slave = pair.slave;
 
         // Read the output in another thread.
         // This is important because it is easy to encounter a situation
@@ -89,7 +90,7 @@ impl Pty {
         Ok(Self {
             rx_read,
             tx_write,
-            _slave: slave,
+            // _slave: slave,
         })
     }
 
