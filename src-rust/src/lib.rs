@@ -32,9 +32,9 @@ impl PtyReader {
         //NOTE: important, block until we read something
         // then check the channel for any more available msg
         // this saves a lot of read calls
-        let one_msg = self.rx_read.recv()?;
-        let maybe_more_msgs: Vec<_> = self.rx_read.try_iter().collect();
-        let msgs: Vec<_> = std::iter::once(one_msg).chain(maybe_more_msgs).collect();
+        let msgs: Vec<_> = std::iter::once(self.rx_read.recv()?)
+            .chain(self.rx_read.try_iter())
+            .collect();
 
         // NOTE: we might have some msgs here
         // it might be better to tell the user about them
