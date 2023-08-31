@@ -3,7 +3,7 @@ use portable_pty::{native_pty_system, CommandBuilder, PtySize, SlavePty};
 use serde::{Deserialize, Serialize};
 use std::{
     ffi::{CStr, CString},
-    io::{BufRead, BufReader, Read},
+    io::Read,
     mem::ManuallyDrop,
 };
 mod utils;
@@ -29,7 +29,31 @@ impl PtyReader {
         Self { rx_read }
     }
     fn read(&self) -> Result<Message> {
-        Ok(self.rx_read.recv()?)
+        //NOTE: important, block until we read something
+        // then check the channel for any more available msg
+        // this saves a lot of read calls
+        let one_msg = self.rx_read.recv()?;
+        let maybe_more_msgs: Vec<_> = self.rx_read.try_iter().collect();
+        let msgs: Vec<_> = std::iter::once(one_msg).chain(maybe_more_msgs).collect();
+
+        // NOTE: we might have some msgs here
+        // it might be better to tell the user about them
+        if msgs.contains(&Message::End) {
+            return Ok(Message::End);
+        }
+        let msg = msgs
+            .iter()
+            .map(|msg| {
+                if let Message::Data(data) = msg {
+                    return data.as_str();
+                } else {
+                    ""
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("");
+
+        Ok(Message::Data(msg))
     }
 }
 
@@ -40,6 +64,7 @@ struct Command {
     env: Vec<(String, String)>,
 }
 
+#[derive(PartialEq, Eq)]
 enum Message {
     Data(String),
     End,
@@ -89,8 +114,7 @@ impl Pty {
         // This is important because it is easy to encounter a situation
         // where read/write buffers fill and block either your process
         // or the spawned process.
-        let reader = pair.master.try_clone_reader()?;
-        let mut reader = BufReader::new(reader);
+        let mut reader = pair.master.try_clone_reader()?;
         std::thread::spawn(move || {
             let mut buf = [0; 512];
             loop {
@@ -174,7 +198,7 @@ pub unsafe extern "C" fn pty_create(command: *mut i8, result: *mut usize) -> i8 
 #[no_mangle]
 pub unsafe extern "C" fn pty_read(this: *mut Pty, result: *mut usize) -> i8 {
     enum R {
-        CStr(CString),
+        Data(CString),
         End,
     }
     match (|| -> Result<R> {
@@ -182,12 +206,12 @@ pub unsafe extern "C" fn pty_read(this: *mut Pty, result: *mut usize) -> i8 {
         // TODO: add a test for null byte inside str from read
         let msg = this.read()?;
         match msg {
-            Message::Data(data) => Ok(R::CStr(CString::new(data.replace('\0', ""))?)),
+            Message::Data(data) => Ok(R::Data(CString::new(data.replace('\0', ""))?)),
             Message::End => Ok(R::End),
         }
     })() {
         Ok(data) => match data {
-            R::CStr(str) => {
+            R::Data(str) => {
                 *result = str.into_raw() as _;
                 0
             }
