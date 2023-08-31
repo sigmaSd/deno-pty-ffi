@@ -2,6 +2,7 @@ use crossbeam::channel::{unbounded, Receiver, Sender};
 use portable_pty::{native_pty_system, CommandBuilder, PtySize, SlavePty};
 use serde::{Deserialize, Serialize};
 use std::{
+    cell::Cell,
     ffi::{CStr, CString},
     io::Read,
     mem::ManuallyDrop,
@@ -23,24 +24,40 @@ pub struct Pty {
 #[derive(Clone)]
 struct PtyReader {
     rx_read: Receiver<Message>,
+    done: Cell<bool>,
 }
 impl PtyReader {
     fn new(rx_read: Receiver<Message>) -> PtyReader {
-        Self { rx_read }
+        Self {
+            rx_read,
+            done: Cell::new(false),
+        }
     }
     fn read(&self) -> Result<Message> {
+        if self.done.get() {
+            return Ok(Message::End);
+        }
+
         //NOTE: important, block until we read something
         // then check the channel for any more available msg
         // this saves a lot of read calls
-        let msgs: Vec<_> = std::iter::once(self.rx_read.recv()?)
+        let mut msgs: Vec<_> = std::iter::once(self.rx_read.recv()?)
             .chain(self.rx_read.try_iter())
             .collect();
 
-        // NOTE: we might have some msgs here
-        // it might be better to tell the user about them
         if msgs.contains(&Message::End) {
-            return Ok(Message::End);
+            self.done.set(true);
+            if msgs.len() == 1 {
+                return Ok(Message::End);
+            }
+            // we might have some msgs here
+            // we should send the to the user
+            msgs = msgs
+                .into_iter()
+                .take_while(|msg| !matches!(msg, Message::End))
+                .collect();
         }
+
         let msg = msgs
             .iter()
             .map(|msg| {
