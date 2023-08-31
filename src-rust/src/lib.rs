@@ -1,13 +1,10 @@
-use parking_lot::{Mutex, MutexGuard};
+use crossbeam::channel::{unbounded, Receiver, Sender};
 use portable_pty::{native_pty_system, CommandBuilder, PtySize, SlavePty};
 use serde::{Deserialize, Serialize};
 use std::{
     ffi::{CStr, CString},
+    io::{BufRead, BufReader, Read},
     mem::ManuallyDrop,
-    sync::{
-        mpsc::{Receiver, Sender},
-        Arc,
-    },
 };
 mod utils;
 use utils::cstr_to_type;
@@ -15,12 +12,25 @@ use utils::cstr_to_type;
 pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
 pub struct Pty {
-    rx_read: Receiver<Message>,
+    reader: PtyReader,
     tx_write: Sender<String>,
     // keep the slave alive
     // so windows works
     // https://github.com/wez/wezterm/issues/4206
     _slave: Box<dyn SlavePty + Send>,
+}
+
+#[derive(Clone)]
+struct PtyReader {
+    rx_read: Receiver<Message>,
+}
+impl PtyReader {
+    fn new(rx_read: Receiver<Message>) -> PtyReader {
+        Self { rx_read }
+    }
+    fn read(&self) -> Result<Message> {
+        Ok(self.rx_read.recv()?)
+    }
 }
 
 #[derive(Serialize, Deserialize)]
@@ -62,7 +72,7 @@ impl Pty {
             cmd.env(env.0, env.1);
         }
 
-        let (tx_read, rx_read) = std::sync::mpsc::channel();
+        let (tx_read, rx_read) = unbounded();
 
         let mut child = pair.slave.spawn_command(cmd)?;
 
@@ -79,7 +89,8 @@ impl Pty {
         // This is important because it is easy to encounter a situation
         // where read/write buffers fill and block either your process
         // or the spawned process.
-        let mut reader = pair.master.try_clone_reader()?;
+        let reader = pair.master.try_clone_reader()?;
+        let mut reader = BufReader::new(reader);
         std::thread::spawn(move || {
             let mut buf = [0; 512];
             loop {
@@ -92,7 +103,7 @@ impl Pty {
         });
 
         let mut writer = pair.master.take_writer()?;
-        let (tx_write, rx_write): (Sender<String>, _) = std::sync::mpsc::channel();
+        let (tx_write, rx_write): (Sender<String>, _) = unbounded();
         std::thread::spawn(move || {
             while let Ok(buf) = rx_write.recv() {
                 writer
@@ -102,14 +113,19 @@ impl Pty {
         });
 
         Ok(Self {
-            rx_read,
+            reader: PtyReader::new(rx_read),
             tx_write,
             _slave: pair.slave,
         })
     }
 
+    #[allow(dead_code)]
+    fn clone_reader(&self) -> PtyReader {
+        self.reader.clone()
+    }
+
     fn read(&self) -> Result<Message> {
-        Ok(self.rx_read.recv()?)
+        self.reader.read()
     }
 
     fn write(&self, data: String) -> Result<()> {
@@ -129,14 +145,14 @@ impl Pty {
 #[no_mangle]
 // can't use new since its a reserved keyword in javascript
 pub unsafe extern "C" fn pty_create(command: *mut i8, result: *mut usize) -> i8 {
-    let pty = (|| -> Result<Arc<Mutex<Pty>>> {
+    let pty = (|| -> Result<Box<Pty>> {
         let command = cstr_to_type::<Command>(command)?;
         let pty = Pty::create(command)?;
-        Ok(Arc::new(Mutex::new(pty)))
+        Ok(Box::new(pty))
     })();
     match pty {
         Ok(pty) => {
-            *result = Arc::into_raw(pty) as usize;
+            *result = Box::into_raw(pty) as usize;
             0
         }
         Err(err) => {
@@ -156,14 +172,13 @@ pub unsafe extern "C" fn pty_create(command: *mut i8, result: *mut usize) -> i8 
 /// Returns -1 on error
 /// Returns 99 on process exit
 #[no_mangle]
-pub unsafe extern "C" fn pty_read(this: *const Mutex<Pty>, result: *mut usize) -> i8 {
+pub unsafe extern "C" fn pty_read(this: *mut Pty, result: *mut usize) -> i8 {
     enum R {
         CStr(CString),
         End,
     }
     match (|| -> Result<R> {
-        let this = ManuallyDrop::new(Arc::from_raw(this));
-        let this = this.lock();
+        let this = ManuallyDrop::new(Box::from_raw(this));
         // TODO: add a test for null byte inside str from read
         let msg = this.read()?;
         match msg {
@@ -195,20 +210,15 @@ pub unsafe extern "C" fn pty_read(this: *const Mutex<Pty>, result: *mut usize) -
 ///
 /// Returns -1 on error
 #[no_mangle]
-pub unsafe extern "C" fn pty_write(
-    this: *const Mutex<Pty>,
-    data: *mut i8,
-    result: *mut usize,
-) -> i8 {
-    fn inner(this: MutexGuard<Pty>, data: &CStr) -> Result<()> {
+pub unsafe extern "C" fn pty_write(this: *mut Pty, data: *mut i8, result: *mut usize) -> i8 {
+    fn inner(this: &Pty, data: &CStr) -> Result<()> {
         let data_str = data.to_str()?.to_owned(); // NOTE: can we send str in the channels ?
         this.write(data_str)
     }
 
-    let this = ManuallyDrop::new(Arc::from_raw(this));
-    let this = this.lock();
+    let this = ManuallyDrop::new(Box::from_raw(this));
     let data = ManuallyDrop::new(CString::from_raw(data));
-    match inner(this, data.as_ref()) {
+    match inner(&this, data.as_ref()) {
         Ok(_) => 0,
         Err(err) => {
             *result = CString::new(err.to_string())
@@ -259,26 +269,26 @@ mod tests {
     use super::*;
     #[test]
     fn it_works() {
-        let pty = Arc::new(Mutex::new(
+        let pty = Box::new(
             Pty::create(Command {
                 cmd: "deno".into(),
                 args: vec!["repl".into()],
                 env: vec![("NO_COLOR".into(), "1".into())],
             })
             .unwrap(),
-        ));
+        );
 
         // read header
-        pty.lock().read().unwrap();
+        pty.read().unwrap();
 
         let write_and_expect = |to_write: &'static str, expect: &'static str| {
-            pty.lock().write(to_write.into()).unwrap();
+            pty.write(to_write.into()).unwrap();
 
             let (tx, rx) = mpsc::channel();
             let tx_c = tx.clone();
-            let pty_c = pty.clone();
+            let reader = pty.clone_reader();
             std::thread::spawn(move || loop {
-                let r = pty_c.lock().read().unwrap();
+                let r = reader.read().unwrap();
                 match r {
                     Message::Data(data) => {
                         if data.contains(expect) {

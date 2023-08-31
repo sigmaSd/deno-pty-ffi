@@ -9,6 +9,7 @@ edition = "2021"
 strip = true  # Automatically strip symbols from the binary.
 
 [dependencies]
+crossbeam = { version = "0.8.2", features = ["crossbeam-channel"] }
 parking_lot = "0.12.1"
 portable-pty = "0.8.1"
 serde = { version = "1.0.164", features = ["derive"] }
