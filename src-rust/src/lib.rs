@@ -50,7 +50,8 @@ impl PtyReader {
         if msgs.contains(&Message::End) {
             // NOTE: We received the END message, this means that the process has exited
             // But there could be some pending messages in the read channel, this is especisally true in windows
-            // So check the channel again
+            // So sleep a bit and check the channel again
+            std::thread::sleep(Duration::from_millis(100));
             msgs.extend(self.rx_read.try_iter());
 
             self.done.set(true);
