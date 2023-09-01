@@ -55,7 +55,7 @@ impl PtyReader {
             // we should send the to the user
             msgs = msgs
                 .into_iter()
-                .take_while(|msg| !matches!(msg, Message::End))
+                .filter(|msg| !matches!(msg, Message::End))
                 .collect();
         }
 
