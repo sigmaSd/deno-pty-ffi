@@ -142,10 +142,11 @@ impl Pty {
             let mut buf = [0; 512];
             loop {
                 let n = reader.read(&mut buf).expect("failed to read data");
-                // ignore send error, it errors when the recevier closes
-                let _ = tx_read.send(Message::Data(
-                    String::from_utf8(buf[0..n].to_vec()).expect("data is not valid utf8"),
-                ));
+                tx_read
+                    .send(Message::Data(
+                        String::from_utf8(buf[0..n].to_vec()).expect("data is not valid utf8"),
+                    ))
+                    .expect("failed to send some read data");
             }
         });
 
