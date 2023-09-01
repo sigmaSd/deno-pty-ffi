@@ -47,31 +47,30 @@ impl PtyReader {
             .collect();
 
         if msgs.contains(&Message::End) {
+            self.done.set(true);
+
             // NOTE: We received the END message, this means that the process has exited
             // But there could be some pending messages in the read channel, this is especisally true in windows
             // So sleep a bit and check the channel again
             std::thread::sleep(Duration::from_millis(100));
             msgs.extend(self.rx_read.try_iter());
 
-            self.done.set(true);
             if msgs.len() == 1 {
                 return Ok(Message::End);
             }
+
             // we might have some msgs here
-            // we should send the to the user
-            msgs = msgs
-                .into_iter()
-                .filter(|msg| !matches!(msg, Message::End))
-                .collect();
+            // we should send them to the user
+            msgs.retain(|msg| !matches!(msg, Message::End));
         }
 
         let msg = msgs
             .iter()
             .map(|msg| {
                 if let Message::Data(data) = msg {
-                    return data.as_str();
+                    data.as_str()
                 } else {
-                    ""
+                    unreachable!()
                 }
             })
             .collect::<Vec<_>>()
