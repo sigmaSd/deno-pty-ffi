@@ -6,6 +6,7 @@ use std::{
     ffi::{CStr, CString},
     io::Read,
     mem::ManuallyDrop,
+    time::Duration,
 };
 mod utils;
 use utils::cstr_to_type;
@@ -46,6 +47,12 @@ impl PtyReader {
             .collect();
 
         if msgs.contains(&Message::End) {
+            // NOTE: We received the END message, this means that the process has exited
+            // But there could be some pending messages in the read channel, this is especisally true in windows
+            // So sleep a bit and check the channel again
+            std::thread::sleep(Duration::from_millis(100));
+            msgs.extend(self.rx_read.try_iter());
+
             self.done.set(true);
             if msgs.len() == 1 {
                 return Ok(Message::End);
@@ -54,7 +61,7 @@ impl PtyReader {
             // we should send the to the user
             msgs = msgs
                 .into_iter()
-                .take_while(|msg| !matches!(msg, Message::End))
+                .filter(|msg| !matches!(msg, Message::End))
                 .collect();
         }
 
@@ -81,7 +88,7 @@ struct Command {
     env: Vec<(String, String)>,
 }
 
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, Debug)]
 enum Message {
     Data(String),
     End,
