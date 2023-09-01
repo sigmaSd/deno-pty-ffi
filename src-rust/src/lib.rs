@@ -6,6 +6,7 @@ use std::{
     ffi::{CStr, CString},
     io::Read,
     mem::ManuallyDrop,
+    time::Duration,
 };
 mod utils;
 use utils::cstr_to_type;
@@ -47,7 +48,11 @@ impl PtyReader {
         dbg!(&msgs);
 
         if msgs.contains(&Message::End) {
-            dbg!(self.rx_read.recv());
+            // NOTE: We received the END message, this means that the process has exited
+            // But there could be some pending messages in the read channel, this is especisally true in windows
+            // So check the channel again
+            msgs.extend(self.rx_read.try_iter());
+
             self.done.set(true);
             if msgs.len() == 1 {
                 return Ok(Message::End);
