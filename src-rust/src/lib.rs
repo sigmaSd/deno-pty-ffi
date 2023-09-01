@@ -44,6 +44,7 @@ impl PtyReader {
         let mut msgs: Vec<_> = std::iter::once(self.rx_read.recv()?)
             .chain(self.rx_read.try_iter())
             .collect();
+        dbg!(&msgs);
 
         if msgs.contains(&Message::End) {
             self.done.set(true);
@@ -81,7 +82,7 @@ struct Command {
     env: Vec<(String, String)>,
 }
 
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, Debug)]
 enum Message {
     Data(String),
     End,
@@ -147,6 +148,7 @@ impl Pty {
         let (tx_write, rx_write): (Sender<String>, _) = unbounded();
         std::thread::spawn(move || {
             while let Ok(buf) = rx_write.recv() {
+                dbg!(&buf);
                 writer
                     .write_all(&buf.into_bytes())
                     .expect("failed to write data");
