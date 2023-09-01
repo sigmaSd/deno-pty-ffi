@@ -47,6 +47,7 @@ impl PtyReader {
         dbg!(&msgs);
 
         if msgs.contains(&Message::End) {
+            dbg!(self.rx_read.recv());
             self.done.set(true);
             if msgs.len() == 1 {
                 return Ok(Message::End);
