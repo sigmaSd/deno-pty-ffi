@@ -35,7 +35,7 @@ if (import.meta.main) {
   // const targetDir = Deno.env.get("CARGO_TARGET_DIR") || "target";
   // const cmd = Deno.build.os !== "windows" ? "irust" : "irust.exe";
   const pty = await Pty.create({
-    cmd: "./irust-irust@1.71.1-x86_64-pc-windows-msvc/irust.exe",
+    cmd: "./irust-irust@1.71.2-x86_64-pc-windows-msvc/irust.exe",
     args: ["--default-config"],
     env: [["NO_COLOR", "1"]],
   });
