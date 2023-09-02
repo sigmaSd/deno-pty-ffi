@@ -22,6 +22,13 @@ jobs:
       with:
         deno-version: v1.x
 
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@master
+      with:
+        toolchain: ${{ matrix.rust }}
+        components: rustfmt,clippy
+
+
     # - if: runner.os == 'Linux'
     #   name: Run tests Linux
     #   run: CARGO_TARGET_DIR=target deno task test
