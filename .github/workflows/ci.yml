@@ -61,4 +61,4 @@ jobs:
       run: git clone https://github.com/sigmaSd/IRust && cd IRust && git checkout anyhow && cargo b --release
     - if: runner.os == 'Windows'
       name: Run tests Windows
-      run: $env:CARGO_TARGET_DIR='target'; deno task dev c.ts
+      run:  $env:RUST_BACKTRACE='1'; $env:CARGO_TARGET_DIR='target'; deno task dev c.ts
