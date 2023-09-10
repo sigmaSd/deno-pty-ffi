@@ -50,7 +50,7 @@ jobs:
     #   run: export CARGO_TARGET_DIR=target && export RUST_LIB_PATH=$CARGO_TARGET_DIR/debug && deno task build && deno task test:rust && mv $CARGO_TARGET_DIR/debug/libpty.dylib $CARGO_TARGET_DIR/debug/libpty_x86_64.dylib && deno test --unstable -A
 
     # - run: curl -L -o irust.zip https://github.com/sigmaSd/IRust/releases/download/irust%401.71.2/irust-irust@1.71.2-x86_64-pc-windows-msvc.zip
-    - run: git clone https://github.com/sigmaSd/IRust
+    # - run: git clone https://github.com/sigmaSd/IRust
      
     # - if: runner.os == 'Windows'
     #   run: tar -xvf irust.zip
