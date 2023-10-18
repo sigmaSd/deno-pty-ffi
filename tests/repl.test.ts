@@ -1,4 +1,4 @@
-import { assert } from "https://deno.land/std@0.203.0/testing/asserts.ts";
+import { assert } from "https://deno.land/std@0.203.0/assert/assert.ts";
 import { assertEquals } from "https://deno.land/std@0.203.0/assert/assert_equals.ts";
 import { Pty } from "../mod.ts";
 
