@@ -1,6 +1,7 @@
 import { plug } from "./deps.ts";
 import {
   decode_cstring,
+  decode_json_cstring,
   encode_cstring,
   encode_json_cstring,
 } from "./utils.ts";
@@ -9,6 +10,20 @@ export interface Command {
   cmd: string;
   args: string[];
   env: [string, string][];
+}
+
+/** Represents the size of the visible display area in the pty */
+export interface PtySize {
+  /** The number of lines of text*/
+  rows: number;
+  /** The number of columns of text*/
+  cols: number;
+  /** The width of a cell in pixels.  Note that some systems never
+  fill this value and ignore it.*/
+  pixel_width: number;
+  /** The height of a cell in pixels.  Note that some systems never
+  fill this value and ignore it.*/
+  pixel_height: number;
 }
 
 interface PtyApi extends Deno.ForeignLibraryInterface {
@@ -22,6 +37,14 @@ interface PtyApi extends Deno.ForeignLibraryInterface {
     parameters: ["pointer", "buffer", "buffer"];
     result: "i8";
     nonblocking: boolean;
+  };
+  pty_get_size: {
+    parameters: ["pointer", "buffer"];
+    result: "i8";
+  };
+  pty_resize: {
+    parameters: ["pointer", "buffer", "buffer"];
+    result: "i8";
   };
   tmp_dir: {
     parameters: ["buffer"];
@@ -82,6 +105,14 @@ export class Pty {
           result: "i8",
           nonblocking: true,
         },
+        pty_get_size: {
+          parameters: ["pointer", "buffer"],
+          result: "i8",
+        },
+        pty_resize: {
+          parameters: ["pointer", "buffer", "buffer"],
+          result: "i8",
+        },
         tmp_dir: {
           parameters: ["buffer"],
           result: "i8",
@@ -124,6 +155,29 @@ export class Pty {
     const result = await this.#lib.symbols.pty_write(
       this.#this,
       encode_cstring(data),
+      errBuf,
+    );
+    const ptr = Deno.UnsafePointer.create(
+      new BigUint64Array(errBuf.buffer)[0],
+    )!;
+    if (result === -1) throw new Error(decode_cstring(ptr));
+  }
+
+  getSize(): PtySize {
+    const dataBuf = new Uint8Array(8);
+    const result = this.#lib.symbols.pty_get_size(this.#this, dataBuf);
+    const ptr = Deno.UnsafePointer.create(
+      new BigUint64Array(dataBuf.buffer)[0],
+    )!;
+    if (result === -1) throw new Error(decode_cstring(ptr));
+    return decode_json_cstring(ptr);
+  }
+
+  resize(size: PtySize) {
+    const errBuf = new Uint8Array(8);
+    const result = this.#lib.symbols.pty_resize(
+      this.#this,
+      encode_json_cstring(size),
       errBuf,
     );
     const ptr = Deno.UnsafePointer.create(

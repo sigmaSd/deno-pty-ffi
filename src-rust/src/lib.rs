@@ -1,5 +1,5 @@
 use crossbeam::channel::{unbounded, Receiver, Sender};
-use portable_pty::{native_pty_system, CommandBuilder, PtySize, SlavePty};
+use portable_pty::{native_pty_system, CommandBuilder, PtyPair, PtySize};
 use serde::{Deserialize, Serialize};
 use std::{
     cell::Cell,
@@ -9,7 +9,7 @@ use std::{
     time::Duration,
 };
 mod utils;
-use utils::cstr_to_type;
+use utils::{cstr_to_type, type_to_cstr};
 
 pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
@@ -19,7 +19,7 @@ pub struct Pty {
     // keep the slave alive
     // so windows works
     // https://github.com/wez/wezterm/issues/4206
-    _slave: Box<dyn SlavePty + Send>,
+    pty_pair: PtyPair,
 }
 
 #[derive(Clone)]
@@ -163,7 +163,7 @@ impl Pty {
         Ok(Self {
             reader: PtyReader::new(rx_read),
             tx_write,
-            _slave: pair.slave,
+            pty_pair: pair,
         })
     }
 
@@ -178,6 +178,14 @@ impl Pty {
 
     fn write(&self, data: String) -> Result<()> {
         Ok(self.tx_write.send(data)?)
+    }
+
+    fn resize(&self, size: PtySize) -> Result<()> {
+        self.pty_pair.master.resize(size).map_err(Into::into)
+    }
+
+    fn get_size(&self) -> Result<PtySize> {
+        self.pty_pair.master.get_size().map_err(Into::into)
     }
 }
 
@@ -278,6 +286,57 @@ pub unsafe extern "C" fn pty_write(this: *mut Pty, data: *mut i8, result: *mut u
 }
 
 /// # Safety
+/// - Requires a valid pointer to a Pty
+/// - Requires a valid pointer to a buffer of size 8
+/// to write the result to
+///
+/// Returns -1 on error
+#[no_mangle]
+pub unsafe extern "C" fn pty_get_size(this: *mut Pty, result: *mut usize) -> i8 {
+    let this = ManuallyDrop::new(Box::from_raw(this));
+    match (|| -> Result<CString> {
+        let size = this.get_size()?;
+        type_to_cstr(&size)
+    })() {
+        Ok(size) => {
+            *result = size.into_raw() as _;
+            0
+        }
+        Err(err) => {
+            *result = CString::new(err.to_string())
+                .expect("err is valid cstring")
+                .into_raw() as _;
+            -1
+        }
+    }
+}
+
+/// # Safety
+/// - Requires a valid pointer to a Pty
+/// - Requires a valid pointer to a PtySize
+/// - Requires a valid pointer to a buffer of size 8
+/// to write the error to
+///
+/// Returns -1 on error
+#[no_mangle]
+pub unsafe extern "C" fn pty_resize(this: *mut Pty, size: *mut i8, result: *mut usize) -> i8 {
+    let this = ManuallyDrop::new(Box::from_raw(this));
+    match (|| -> Result<()> {
+        let size = cstr_to_type::<PtySize>(size)?;
+        this.resize(size)?;
+        Ok(())
+    })() {
+        Ok(()) => 0,
+        Err(err) => {
+            *result = CString::new(err.to_string())
+                .expect("err is valid cstring")
+                .into_raw() as _;
+            -1
+        }
+    }
+}
+
+/// # Safety
 /// Requires a pointer to a buffer of size 8 to write the result to
 ///
 /// The result is either
@@ -359,5 +418,33 @@ mod tests {
 
         write_and_expect("5+4\n\r", "9");
         write_and_expect("let a = 4; a + a\n\r", "8");
+
+        // test size, resize
+        assert!(matches!(
+            pty.get_size(),
+            Ok(PtySize {
+                rows: 24,
+                cols: 80,
+                pixel_width: 0,
+                pixel_height: 0,
+            })
+        ));
+
+        pty.resize(PtySize {
+            rows: 50,
+            cols: 120,
+            pixel_width: 1,
+            pixel_height: 1,
+        })
+        .unwrap();
+        assert!(matches!(
+            pty.get_size(),
+            Ok(PtySize {
+                rows: 50,
+                cols: 120,
+                pixel_width: 1,
+                pixel_height: 1,
+            })
+        ));
     }
 }
