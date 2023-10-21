@@ -23,6 +23,14 @@ interface PtyApi extends Deno.ForeignLibraryInterface {
     result: "i8";
     nonblocking: boolean;
   };
+  pty_get_size: {
+    parameters: ["pointer", "buffer"];
+    result: "i8";
+  };
+  pty_resize: {
+    parameters: ["pointer", "buffer", "buffer"];
+    result: "i8";
+  };
   tmp_dir: {
     parameters: ["buffer"];
     result: "i8";
@@ -81,6 +89,15 @@ export class Pty {
           parameters: ["pointer", "buffer", "buffer"],
           result: "i8",
           nonblocking: true,
+        },
+
+        pty_get_size: {
+          parameters: ["pointer", "buffer"],
+          result: "i8",
+        },
+        pty_resize: {
+          parameters: ["pointer", "buffer", "buffer"],
+          result: "i8",
         },
         tmp_dir: {
           parameters: ["buffer"],

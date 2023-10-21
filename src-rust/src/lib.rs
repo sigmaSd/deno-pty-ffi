@@ -1,5 +1,5 @@
 use crossbeam::channel::{unbounded, Receiver, Sender};
-use portable_pty::{native_pty_system, CommandBuilder, MasterPty, PtyPair, PtySize, SlavePty};
+use portable_pty::{native_pty_system, CommandBuilder, MasterPty, PtySize, SlavePty};
 use serde::{Deserialize, Serialize};
 use std::{
     cell::Cell,
@@ -420,5 +420,33 @@ mod tests {
 
         write_and_expect("5+4\n\r", "9");
         write_and_expect("let a = 4; a + a\n\r", "8");
+
+        // test size, resize
+        assert!(matches!(
+            pty.get_size(),
+            Ok(PtySize {
+                rows: 24,
+                cols: 80,
+                pixel_width: 0,
+                pixel_height: 0,
+            })
+        ));
+
+        pty.resize(PtySize {
+            rows: 50,
+            cols: 120,
+            pixel_width: 1,
+            pixel_height: 1,
+        })
+        .unwrap();
+        assert!(matches!(
+            pty.get_size(),
+            Ok(PtySize {
+                rows: 50,
+                cols: 120,
+                pixel_width: 1,
+                pixel_height: 1,
+            })
+        ));
     }
 }
