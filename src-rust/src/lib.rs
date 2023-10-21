@@ -1,5 +1,5 @@
 use crossbeam::channel::{unbounded, Receiver, Sender};
-use portable_pty::{native_pty_system, CommandBuilder, PtyPair, PtySize, SlavePty};
+use portable_pty::{native_pty_system, CommandBuilder, MasterPty, PtyPair, PtySize, SlavePty};
 use serde::{Deserialize, Serialize};
 use std::{
     cell::Cell,
@@ -19,7 +19,8 @@ pub struct Pty {
     // keep the slave alive
     // so windows works
     // https://github.com/wez/wezterm/issues/4206
-    pair: PtyPair,
+    _slave: Box<dyn SlavePty + Send>,
+    master: Box<dyn MasterPty + Send>,
 }
 
 #[derive(Clone)]
@@ -150,7 +151,8 @@ impl Pty {
             }
         });
 
-        let mut writer = pair.master.take_writer()?;
+        let master = pair.master;
+        let mut writer = master.take_writer()?;
         let (tx_write, rx_write): (Sender<String>, _) = unbounded();
         std::thread::spawn(move || {
             while let Ok(buf) = rx_write.recv() {
@@ -163,7 +165,8 @@ impl Pty {
         Ok(Self {
             reader: PtyReader::new(rx_read),
             tx_write,
-            pair: pair,
+            _slave: pair.slave,
+            master,
         })
     }
 
