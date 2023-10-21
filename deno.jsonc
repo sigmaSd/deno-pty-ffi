@@ -8,7 +8,7 @@
     "fmt": "deno fmt && cargo fmt --manifest-path src-rust/Cargo.toml",
     "lint": "deno lint && cargo clippy --manifest-path src-rust/Cargo.toml",
     "test": "deno task test:rust && deno task test:deno",
-    "test:rust": "cargo test --manifest-path src-rust/Cargo.toml",
+    "test:rust": "cargo test --manifest-path src-rust/Cargo.toml -- --nocapture",
     "test:deno": "deno task build && export RUST_LIB_PATH=$CARGO_TARGET_DIR/debug && deno test --unstable -A"
   }
 }

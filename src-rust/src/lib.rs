@@ -1,11 +1,12 @@
 use crossbeam::channel::{unbounded, Receiver, Sender};
-use portable_pty::{native_pty_system, CommandBuilder, MasterPty, PtySize, SlavePty};
+use portable_pty::{native_pty_system, ChildKiller, CommandBuilder, MasterPty, PtySize, SlavePty};
 use serde::{Deserialize, Serialize};
 use std::{
     cell::Cell,
     ffi::{CStr, CString},
     io::Read,
     mem::ManuallyDrop,
+    thread::JoinHandle,
     time::Duration,
 };
 mod utils;
@@ -21,6 +22,13 @@ pub struct Pty {
     // https://github.com/wez/wezterm/issues/4206
     _slave: Box<dyn SlavePty + Send>,
     master: Box<dyn MasterPty + Send>,
+    child_finisher: Box<dyn ChildKiller + Send>,
+    ts: Option<Vec<JoinHandle<()>>>,
+}
+impl Drop for Pty {
+    fn drop(&mut self) {
+        dbg!("dropppp");
+    }
 }
 
 #[derive(Clone)]
@@ -96,6 +104,7 @@ enum Message {
 
 impl Pty {
     fn create(command: Command) -> Result<Self> {
+        dbg!("create");
         // Use the native pty implementation for the system
         let pty_system = native_pty_system();
 
@@ -124,14 +133,18 @@ impl Pty {
         let (tx_read, rx_read) = unbounded();
 
         let mut child = pair.slave.spawn_command(cmd)?;
+        let child_finisher = child.clone_killer();
 
         // If we do a pty.read after the process exit, read will hang
         // Thats why we spawn another thread to wait for the child
         // and signal its exit
         let tx_read_c = tx_read.clone();
         std::thread::spawn(move || {
+            dbg!("before wait");
             let _ = child.wait();
+            dbg!("after wait");
             let _ = tx_read_c.send(Message::End);
+            dbg!("after send");
         });
 
         // Read the output in another thread.
@@ -139,26 +152,34 @@ impl Pty {
         // where read/write buffers fill and block either your process
         // or the spawned process.
         let mut reader = pair.master.try_clone_reader()?;
-        std::thread::spawn(move || {
+        let t1 = std::thread::spawn(move || {
             let mut buf = [0; 512];
+            dbg!("beforesss");
             loop {
                 let n = reader.read(&mut buf).expect("failed to read data");
-                tx_read
+                if tx_read
                     .send(Message::Data(
                         String::from_utf8(buf[0..n].to_vec()).expect("data is not valid utf8"),
                     ))
-                    .expect("failed to send some read data");
+                    .is_err()
+                {
+                    dbg!("t1 done");
+                    // writer closed
+                    break;
+                }
             }
+            dbg!("afterssssss");
         });
 
         let mut writer = pair.master.take_writer()?;
         let (tx_write, rx_write): (Sender<String>, _) = unbounded();
-        std::thread::spawn(move || {
+        let t2 = std::thread::spawn(move || {
             while let Ok(buf) = rx_write.recv() {
                 writer
                     .write_all(&buf.into_bytes())
                     .expect("failed to write data");
             }
+            dbg!("afterwrite");
         });
 
         Ok(Self {
@@ -166,6 +187,8 @@ impl Pty {
             tx_write,
             _slave: pair.slave,
             master: pair.master,
+            child_finisher,
+            ts: Some(vec![t1, t2]),
         })
     }
 
@@ -203,6 +226,7 @@ impl Pty {
 #[no_mangle]
 // can't use new since its a reserved keyword in javascript
 pub unsafe extern "C" fn pty_create(command: *mut i8, result: *mut usize) -> i8 {
+    dbg!("create2");
     let pty = (|| -> Result<Box<Pty>> {
         let command = cstr_to_type::<Command>(command)?;
         let pty = Pty::create(command)?;
@@ -338,6 +362,11 @@ pub unsafe extern "C" fn pty_resize(this: *mut Pty, size: *mut i8, result: *mut 
     }
 }
 
+#[no_mangle]
+pub unsafe extern "C" fn pty_drop(this: *mut Pty) {
+    let _ = Box::from_raw(this);
+}
+
 /// # Safety
 /// Requires a pointer to a buffer of size 8 to write the result to
 ///
@@ -420,7 +449,17 @@ mod tests {
 
         write_and_expect("5+4\n\r", "9");
         write_and_expect("let a = 4; a + a\n\r", "8");
-
+    }
+    #[test]
+    fn resize() {
+        let pty = Box::new(
+            Pty::create(Command {
+                cmd: "deno".into(),
+                args: vec!["repl".into()],
+                env: vec![("NO_COLOR".into(), "1".into())],
+            })
+            .unwrap(),
+        );
         // test size, resize
         assert!(matches!(
             pty.get_size(),

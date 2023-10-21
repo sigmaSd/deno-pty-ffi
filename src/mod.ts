@@ -46,6 +46,10 @@ interface PtyApi extends Deno.ForeignLibraryInterface {
     parameters: ["pointer", "buffer", "buffer"];
     result: "i8";
   };
+  pty_drop: {
+    parameters: ["pointer"];
+    result: "void";
+  };
   tmp_dir: {
     parameters: ["buffer"];
     result: "i8";
@@ -80,6 +84,7 @@ export class Pty {
     const url =
       `https://github.com/sigmaSd/deno-pty-ffi/releases/download/${version}`;
 
+    console.log("hello");
     const lib = await plug.dlopen(
       {
         name,
@@ -114,12 +119,17 @@ export class Pty {
           parameters: ["pointer", "buffer", "buffer"],
           result: "i8",
         },
+        pty_drop: {
+          parameters: ["pointer"],
+          result: "void",
+        },
         tmp_dir: {
           parameters: ["buffer"],
           result: "i8",
         },
       } satisfies PtyApi,
     );
+    console.log("world");
 
     const pty_buf = new Uint8Array(8);
     const result = lib.symbols.pty_create(
@@ -198,7 +208,8 @@ export class Pty {
   }
 
   //NOTE: rewrite this with `using` when typescript 5.2 lands
-  close() {
-    this.#lib.close();
+  async close() {
+    this.#lib.symbols.pty_drop(this.#this);
+    await this.#lib.close();
   }
 }
