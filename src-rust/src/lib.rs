@@ -19,7 +19,7 @@ pub struct Pty {
     // keep the slave alive
     // so windows works
     // https://github.com/wez/wezterm/issues/4206
-    _pair: PtyPair,
+    pair: PtyPair,
 }
 
 #[derive(Clone)]
@@ -163,7 +163,7 @@ impl Pty {
         Ok(Self {
             reader: PtyReader::new(rx_read),
             tx_write,
-            _pair: pair,
+            pair: pair,
         })
     }
 
@@ -177,7 +177,7 @@ impl Pty {
     }
 
     fn write(&self, data: String) -> Result<()> {
-        Ok(self.tx_write(data)?)
+        Ok(self.tx_write.send(data)?)
     }
 }
 
