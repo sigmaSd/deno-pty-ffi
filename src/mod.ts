@@ -90,7 +90,7 @@ export class Pty {
         name,
         url: Deno.env.get("RUST_LIB_PATH") || url,
         // reload cache if developping locally
-        cache: Deno.env.get("RUST_LIB_PATH") ? "use" : "use",
+        cache: Deno.env.get("RUST_LIB_PATH") ? "reloadAll" : "use",
         suffixes: {
           darwin: {
             aarch64: "_aarch64",
