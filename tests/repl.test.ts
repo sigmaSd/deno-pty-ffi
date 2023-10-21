@@ -1,4 +1,5 @@
 import { assert } from "https://deno.land/std@0.203.0/testing/asserts.ts";
+import { assertEquals } from "https://deno.land/std@0.203.0/assert/assert_equals.ts";
 import { Pty } from "../mod.ts";
 
 Deno.test("smoke", async () => {
@@ -13,6 +14,26 @@ Deno.test("smoke", async () => {
 
   await write_and_expect(pty, "5+4\n\r", "9");
   await write_and_expect(pty, "let a = 4; a + a\n\r", "8");
+
+  // test size, resize
+  assertEquals(pty.getSize(), {
+    rows: 24,
+    cols: 80,
+    pixel_height: 0,
+    pixel_width: 0,
+  });
+  pty.resize({
+    rows: 50,
+    cols: 120,
+    pixel_height: 1,
+    pixel_width: 1,
+  });
+  assertEquals(pty.getSize(), {
+    rows: 50,
+    cols: 120,
+    pixel_height: 1,
+    pixel_width: 1,
+  });
 
   pty.close();
 });
