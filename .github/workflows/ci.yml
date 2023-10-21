@@ -2,9 +2,9 @@ name: ci
 
 on:
   push:
-    branches: ["master"]
+    branches: ["master","windbg"]
   pull_request:
-    branches: ["master"]
+    branches: ["master","windbg"]
 
 jobs:
   build:
