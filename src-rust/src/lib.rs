@@ -151,8 +151,7 @@ impl Pty {
             }
         });
 
-        let master = pair.master;
-        let mut writer = master.take_writer()?;
+        let mut writer = pair.master.take_writer()?;
         let (tx_write, rx_write): (Sender<String>, _) = unbounded();
         std::thread::spawn(move || {
             while let Ok(buf) = rx_write.recv() {
@@ -166,7 +165,7 @@ impl Pty {
             reader: PtyReader::new(rx_read),
             tx_write,
             _slave: pair.slave,
-            master,
+            master: pair.master,
         })
     }
 
