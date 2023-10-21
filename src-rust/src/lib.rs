@@ -9,7 +9,7 @@ use std::{
     time::Duration,
 };
 mod utils;
-use utils::cstr_to_type;
+use utils::{cstr_to_type, type_to_cstr};
 
 pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
@@ -181,6 +181,14 @@ impl Pty {
     fn write(&self, data: String) -> Result<()> {
         Ok(self.tx_write.send(data)?)
     }
+
+    fn resize(&self, size: PtySize) -> Result<()> {
+        self.master.resize(size).map_err(Into::into)
+    }
+
+    fn get_size(&self) -> Result<PtySize> {
+        self.master.get_size().map_err(Into::into)
+    }
 }
 
 // note: need to be careful with names with no_mangle extern C
@@ -270,6 +278,57 @@ pub unsafe extern "C" fn pty_write(this: *mut Pty, data: *mut i8, result: *mut u
     let data = ManuallyDrop::new(CString::from_raw(data));
     match inner(&this, data.as_ref()) {
         Ok(_) => 0,
+        Err(err) => {
+            *result = CString::new(err.to_string())
+                .expect("err is valid cstring")
+                .into_raw() as _;
+            -1
+        }
+    }
+}
+
+/// # Safety
+/// - Requires a valid pointer to a Pty
+/// - Requires a valid pointer to a buffer of size 8
+/// to write the result to
+///
+/// Returns -1 on error
+#[no_mangle]
+pub unsafe extern "C" fn pty_get_size(this: *mut Pty, result: *mut usize) -> i8 {
+    let this = ManuallyDrop::new(Box::from_raw(this));
+    match (|| -> Result<CString> {
+        let size = this.get_size()?;
+        type_to_cstr(&size)
+    })() {
+        Ok(size) => {
+            *result = size.into_raw() as _;
+            0
+        }
+        Err(err) => {
+            *result = CString::new(err.to_string())
+                .expect("err is valid cstring")
+                .into_raw() as _;
+            -1
+        }
+    }
+}
+
+/// # Safety
+/// - Requires a valid pointer to a Pty
+/// - Requires a valid pointer to a PtySize
+/// - Requires a valid pointer to a buffer of size 8
+/// to write the error to
+///
+/// Returns -1 on error
+#[no_mangle]
+pub unsafe extern "C" fn pty_resize(this: *mut Pty, size: *mut i8, result: *mut usize) -> i8 {
+    let this = ManuallyDrop::new(Box::from_raw(this));
+    match (|| -> Result<()> {
+        let size = cstr_to_type::<PtySize>(size)?;
+        this.resize(size)?;
+        Ok(())
+    })() {
+        Ok(()) => 0,
         Err(err) => {
             *result = CString::new(err.to_string())
                 .expect("err is valid cstring")
