@@ -27,6 +27,7 @@ pub struct Pty {
 }
 impl Drop for Pty {
     fn drop(&mut self) {
+        let _ = self.child_finisher.kill();
         dbg!("dropppp");
     }
 }

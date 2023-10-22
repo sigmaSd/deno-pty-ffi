@@ -208,8 +208,8 @@ export class Pty {
   }
 
   //NOTE: rewrite this with `using` when typescript 5.2 lands
-  async close() {
+  close() {
     this.#lib.symbols.pty_drop(this.#this);
-    await this.#lib.close();
+    this.#lib.close();
   }
 }
