@@ -3,7 +3,7 @@ import { Pty } from "./mod.ts";
 
 if (Deno.args.length === 0) throw new Error("no program provided");
 
-const pty = await Pty.create({
+const pty = new Pty({
   cmd: "deno",
   args: ["run", ...Deno.args],
   env: [["NO_COLOR", "1"]],

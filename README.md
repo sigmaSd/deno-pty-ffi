@@ -10,7 +10,7 @@ This module requires `--unstable` (for ffi)
 ```ts
 import { Pty } from "https://deno.land/x/deno_pty_ffi/mod.ts";
 
-const pty = await Pty.create({
+const pty = new Pty({
   cmd: "bash",
   args: [],
   env: [],
