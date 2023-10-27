@@ -3,7 +3,7 @@ import { assertEquals } from "https://deno.land/std@0.203.0/assert/assert_equals
 import { Pty } from "../mod.ts";
 
 Deno.test("smoke", async () => {
-  const pty = await Pty.create({
+  const pty = new Pty({
     cmd: "deno",
     args: ["repl"],
     env: [["NO_COLOR", "1"]],
@@ -22,6 +22,15 @@ Deno.test("smoke", async () => {
     pixel_height: 0,
     pixel_width: 0,
   });
+});
+
+Deno.test("getSize/resize", () => {
+  const pty = new Pty({
+    cmd: "deno",
+    args: ["repl"],
+    env: [["NO_COLOR", "1"]],
+  });
+
   pty.resize({
     rows: 50,
     cols: 120,
@@ -34,8 +43,6 @@ Deno.test("smoke", async () => {
     pixel_height: 1,
     pixel_width: 1,
   });
-
-  pty.close();
 });
 
 async function write_and_expect(pty: Pty, toWrite: string, expect: string) {
