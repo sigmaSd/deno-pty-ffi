@@ -6,26 +6,35 @@ import {
   encode_json_cstring,
 } from "./utils.ts";
 
+/**
+ * Represents a command to be executed in the pty.
+ */
 export interface Command {
+  /** The command to be executed. */
   cmd: string;
+  /** The arguments for the command. */
   args: string[];
+  /** The environment variables for the command. */
   env: [string, string][];
 }
 
-/** Represents the size of the visible display area in the pty */
+/**
+ * Represents the size of the visible display area in the pty.
+ */
 export interface PtySize {
-  /** The number of lines of text*/
+  /** The number of lines of text. */
   rows: number;
-  /** The number of columns of text*/
+  /** The number of columns of text. */
   cols: number;
-  /** The width of a cell in pixels.  Note that some systems never
-  fill this value and ignore it.*/
+  /** The width of a cell in pixels. Note that some systems may ignore this value. */
   pixel_width: number;
-  /** The height of a cell in pixels.  Note that some systems never
-  fill this value and ignore it.*/
+  /** The height of a cell in pixels. Note that some systems may ignore this value. */
   pixel_height: number;
 }
 
+/**
+ * Represents the interface for the pty library.
+ */
 interface PtyApi extends Deno.ForeignLibraryInterface {
   pty_create: { parameters: ["buffer", "buffer"]; result: "i8" };
   pty_read: {
@@ -104,10 +113,17 @@ async function instantiate(): Promise<Deno.DynamicLibrary<PtyApi>> {
   );
 }
 
+/**
+ * A class representing a Pty.
+ */
 export class Pty {
   #this;
   #processExited = false;
 
+  /**
+   * Creates a new Pty instance with the specified command.
+   * @param command - The command to be executed in the pty.
+   */
   constructor(command: Command) {
     const pty_buf = new Uint8Array(8);
     const result = LIBRARY.symbols.pty_create(
@@ -121,7 +137,11 @@ export class Pty {
     this.#this = ptr;
   }
 
-  async read() {
+  /**
+   * Reads data from the pty.
+   * @returns A Promise that resolves to the data read from the pty.
+   */
+  async read(): Promise<string | undefined> {
     if (this.#processExited) return;
     const dataBuf = new Uint8Array(8);
     const result = await LIBRARY.symbols.pty_read(this.#this, dataBuf);
@@ -137,7 +157,11 @@ export class Pty {
     return decode_cstring(ptr);
   }
 
-  async write(data: string) {
+  /**
+   * Writes data to the pty.
+   * @param data - The data to write to the pty.
+   */
+  async write(data: string): Promise<void> {
     // NOTE: maybe we should tell the user that the process exited
     if (this.#processExited) return;
     const errBuf = new Uint8Array(8);
@@ -152,6 +176,10 @@ export class Pty {
     if (result === -1) throw new Error(decode_cstring(ptr));
   }
 
+  /**
+   * Gets the size of the pty.
+   * @returns The size of the pty.
+   */
   getSize(): PtySize {
     const dataBuf = new Uint8Array(8);
     const result = LIBRARY.symbols.pty_get_size(this.#this, dataBuf);
@@ -162,7 +190,11 @@ export class Pty {
     return decode_json_cstring(ptr);
   }
 
-  resize(size: PtySize) {
+  /**
+   * Resizes the pty to the specified size.
+   * @param size - The new size for the pty.
+   */
+  resize(size: PtySize): void {
     const errBuf = new Uint8Array(8);
     const result = LIBRARY.symbols.pty_resize(
       this.#this,
@@ -175,7 +207,11 @@ export class Pty {
     if (result === -1) throw new Error(decode_cstring(ptr));
   }
 
-  tmpDir() {
+  /**
+   * Gets the temporary directory path.
+   * @returns The path to the temporary directory.
+   */
+  tmpDir(): string {
     const tempDirBuf = new Uint8Array(8);
     const result = LIBRARY.symbols.tmp_dir(tempDirBuf);
     const ptr = Deno.UnsafePointer.create(

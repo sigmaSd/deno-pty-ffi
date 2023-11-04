@@ -23,6 +23,10 @@ jobs:
         deno-version: v1.x
 
     - if: runner.os == 'Linux'
+      name: Run docs lint
+      run: deno doc --lint mod.ts
+
+    - if: runner.os == 'Linux'
       name: Run tests Linux
       run: CARGO_TARGET_DIR=target deno task test
 
