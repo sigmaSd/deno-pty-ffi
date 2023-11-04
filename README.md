@@ -5,7 +5,7 @@ a simple interface
 
 ## Usage
 
-This module requires `--unstable` (for ffi)
+This module requires `--unstable-ffi`
 
 ```ts
 import { Pty } from "https://deno.land/x/deno_pty_ffi/mod.ts";
