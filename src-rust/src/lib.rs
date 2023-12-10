@@ -147,7 +147,7 @@ impl Pty {
                     .send(Message::Data(
                         String::from_utf8(buf[0..n].to_vec()).expect("data is not valid utf8"),
                     ))
-                    .expect("failed to send some read data");
+                    .ok(); // the sender closed (the program finished ?);
             }
         });
 
