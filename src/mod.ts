@@ -64,7 +64,7 @@ async function instantiate(): Promise<Deno.DynamicLibrary<typeof SYMBOLS>> {
   // Tag version with the prebuilt lib
   // It doesn't have to be the same as the library version
   // Only update it when the rust library gets updated
-  const version = "0.15.0";
+  const version = "0.18.0";
   const url =
     `https://github.com/sigmaSd/deno-pty-ffi/releases/download/${version}`;
 
