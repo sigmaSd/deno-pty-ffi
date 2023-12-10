@@ -32,38 +32,34 @@ export interface PtySize {
   pixel_height: number;
 }
 
-/**
- * Represents the interface for the pty library.
- */
-interface PtyApi extends Deno.ForeignLibraryInterface {
-  pty_create: { parameters: ["buffer", "buffer"]; result: "i8" };
+const SYMBOLS = {
+  pty_create: { parameters: ["buffer", "buffer"], result: "i8" },
   pty_read: {
-    parameters: ["pointer", "buffer"];
-    result: "i8";
-    nonblocking: boolean;
-  };
+    parameters: ["pointer", "buffer"],
+    result: "i8",
+    nonblocking: true,
+  },
   pty_write: {
-    parameters: ["pointer", "buffer", "buffer"];
-    result: "i8";
-    nonblocking: boolean;
-  };
+    parameters: ["pointer", "buffer", "buffer"],
+    result: "i8",
+    nonblocking: true,
+  },
   pty_get_size: {
-    parameters: ["pointer", "buffer"];
-    result: "i8";
-  };
+    parameters: ["pointer", "buffer"],
+    result: "i8",
+  },
   pty_resize: {
-    parameters: ["pointer", "buffer", "buffer"];
-    result: "i8";
-  };
+    parameters: ["pointer", "buffer", "buffer"],
+    result: "i8",
+  },
   tmp_dir: {
-    parameters: ["buffer"];
-    result: "i8";
-  };
-}
-
+    parameters: ["buffer"],
+    result: "i8",
+  },
+} as const;
 //NOTE: consier exporting this, so the user decides when to instantiate
 const LIBRARY = await instantiate();
-async function instantiate(): Promise<Deno.DynamicLibrary<PtyApi>> {
+async function instantiate(): Promise<Deno.DynamicLibrary<typeof SYMBOLS>> {
   const name = "pty";
   // Tag version with the prebuilt lib
   // It doesn't have to be the same as the library version
@@ -85,31 +81,7 @@ async function instantiate(): Promise<Deno.DynamicLibrary<PtyApi>> {
         },
       },
     },
-    {
-      pty_create: { parameters: ["buffer", "buffer"], result: "i8" },
-      pty_read: {
-        parameters: ["pointer", "buffer"],
-        result: "i8",
-        nonblocking: true,
-      },
-      pty_write: {
-        parameters: ["pointer", "buffer", "buffer"],
-        result: "i8",
-        nonblocking: true,
-      },
-      pty_get_size: {
-        parameters: ["pointer", "buffer"],
-        result: "i8",
-      },
-      pty_resize: {
-        parameters: ["pointer", "buffer", "buffer"],
-        result: "i8",
-      },
-      tmp_dir: {
-        parameters: ["buffer"],
-        result: "i8",
-      },
-    } satisfies PtyApi,
+    SYMBOLS,
   );
 }
 
