@@ -52,6 +52,10 @@ const SYMBOLS = {
     parameters: ["pointer", "buffer", "buffer"],
     result: "i8",
   },
+  pty_close: {
+    parameters: ["pointer"],
+    result: "void",
+  },
   tmp_dir: {
     parameters: ["buffer"],
     result: "i8",
@@ -177,6 +181,15 @@ export class Pty {
       new BigUint64Array(errBuf.buffer)[0],
     )!;
     if (result === -1) throw new Error(decode_cstring(ptr));
+  }
+
+  /**
+    Close the Pty, the pty won't be usable after this call
+  */
+  close(): void {
+    this.#processExited = true;
+    LIBRARY.symbols.pty_close(this.#this);
+    LIBRARY.close();
   }
 
   /**

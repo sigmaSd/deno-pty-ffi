@@ -339,6 +339,13 @@ pub unsafe extern "C" fn pty_resize(this: *mut Pty, size: *mut i8, result: *mut 
 }
 
 /// # Safety
+/// - Requires a valid pointer to a Pty
+#[no_mangle]
+pub unsafe extern "C" fn pty_close(this: *mut Pty) {
+    let _ = Box::from_raw(this);
+}
+
+/// # Safety
 /// Requires a pointer to a buffer of size 8 to write the result to
 ///
 /// The result is either

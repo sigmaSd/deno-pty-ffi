@@ -67,3 +67,5 @@ while (true) {
     await pty.write("y\n");
   }
 }
+
+pty.close();
