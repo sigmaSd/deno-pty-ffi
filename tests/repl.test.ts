@@ -57,6 +57,8 @@ Deno.test("getSize/resize", () => {
     pixel_height: 1,
     pixel_width: 1,
   });
+
+  pty.close();
 });
 
 async function write_and_expect(pty: Pty, toWrite: string, expect: string) {
