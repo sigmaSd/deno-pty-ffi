@@ -22,6 +22,20 @@ Deno.test("smoke", async () => {
     pixel_height: 0,
     pixel_width: 0,
   });
+
+  // close the first pty
+  // we should still create other ptys
+  pty.close();
+  const pty2 = new Pty({
+    cmd: "deno",
+    args: ["repl"],
+    env: [["NO_COLOR", "1"]],
+  });
+  // read header
+  await pty2.read();
+
+  await write_and_expect(pty2, "5+4\n\r", "9");
+  pty2.close();
 });
 
 Deno.test("getSize/resize", () => {

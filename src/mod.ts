@@ -61,7 +61,8 @@ const SYMBOLS = {
     result: "i8",
   },
 } as const;
-//NOTE: consier exporting this, so the user decides when to instantiate
+// NOTE: consier exporting this, so the user decides when to instantiate
+// NOTE(2): The Libary should remain alive as long as the program is running
 const LIBRARY = await instantiate();
 async function instantiate(): Promise<Deno.DynamicLibrary<typeof SYMBOLS>> {
   const name = "pty";
@@ -189,7 +190,6 @@ export class Pty {
   close(): void {
     this.#processExited = true;
     LIBRARY.symbols.pty_close(this.#this);
-    LIBRARY.close();
   }
 
   /**
