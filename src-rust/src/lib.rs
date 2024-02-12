@@ -1,5 +1,7 @@
 use crossbeam::channel::{unbounded, Receiver, Sender};
-use portable_pty::{native_pty_system, CommandBuilder, MasterPty, PtySize, SlavePty};
+use portable_pty::{
+    native_pty_system, ChildKiller as Ck, CommandBuilder, MasterPty, PtySize, SlavePty,
+};
 use serde::{Deserialize, Serialize};
 use std::{
     cell::Cell,
@@ -21,6 +23,8 @@ pub struct Pty {
     // https://github.com/wez/wezterm/issues/4206
     _slave: Box<dyn SlavePty + Send>,
     master: Box<dyn MasterPty + Send>,
+    // use to end the spawned process
+    ck: Box<dyn Ck>,
 }
 
 #[derive(Clone)]
@@ -124,6 +128,7 @@ impl Pty {
         let (tx_read, rx_read) = unbounded();
 
         let mut child = pair.slave.spawn_command(cmd)?;
+        let ck = child.clone_killer();
 
         // If we do a pty.read after the process exit, read will hang
         // Thats why we spawn another thread to wait for the child
@@ -166,6 +171,7 @@ impl Pty {
             tx_write,
             _slave: pair.slave,
             master: pair.master,
+            ck,
         })
     }
 
@@ -342,7 +348,10 @@ pub unsafe extern "C" fn pty_resize(this: *mut Pty, size: *mut i8, result: *mut 
 /// - Requires a valid pointer to a Pty
 #[no_mangle]
 pub unsafe extern "C" fn pty_close(this: *mut Pty) {
-    let _ = Box::from_raw(this);
+    // NOTE: Dropping the pty doensn't work on windows and trigger random bugs https://github.com/sigmaSd/deno-pty-ffi/issues/3
+    let mut this = ManuallyDrop::new(Box::from_raw(this));
+    // NOTE: maybe propage the possible error
+    let _ = this.ck.kill();
 }
 
 /// # Safety
