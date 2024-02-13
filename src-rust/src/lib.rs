@@ -8,6 +8,7 @@ use std::{
     ffi::{CStr, CString},
     io::Read,
     mem::ManuallyDrop,
+    rc::Rc,
     time::Duration,
 };
 mod utils;
@@ -97,10 +98,11 @@ enum Message {
     End,
 }
 
+const pty_system = native_pty_system();
+
 impl Pty {
     fn create(command: Command) -> Result<Self> {
         // Use the native pty implementation for the system
-        let pty_system = native_pty_system();
 
         // Create a new pty
         let pair = pty_system.openpty(PtySize {
