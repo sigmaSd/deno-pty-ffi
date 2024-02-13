@@ -348,10 +348,12 @@ pub unsafe extern "C" fn pty_resize(this: *mut Pty, size: *mut i8, result: *mut 
 #[no_mangle]
 pub unsafe extern "C" fn pty_close(this: *mut Pty) {
     // NOTE: Dropping the pty doensn't work on windows and trigger random bugs https://github.com/sigmaSd/deno-pty-ffi/issues/3
-    let mut this = ManuallyDrop::new(Box::from_raw(this));
+    let this = Box::from_raw(this);
+    let mut ck = this.ck.clone_killer();
+    drop(this);
     // NOTE: maybe propage the possible error
     std::thread::sleep(Duration::from_millis(500));
-    this.ck.kill().unwrap();
+    ck.kill().unwrap();
 }
 
 /// # Safety
