@@ -1,6 +1,6 @@
 use crossbeam::channel::{unbounded, Receiver, Sender};
 use portable_pty::{
-    native_pty_system, ChildKiller as Ck, CommandBuilder, MasterPty, PtySize, SlavePty,
+    native_pty_system, ChildKiller as Ck, CommandBuilder, MasterPty, PtySize, PtySystem, SlavePty,
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -98,7 +98,9 @@ enum Message {
     End,
 }
 
-const pty_system = native_pty_system();
+use once_cell::sync::Lazy;
+
+const pty_system: Lazy<Box<dyn PtySystem + Send>> = Lazy::new(native_pty_system);
 
 impl Pty {
     fn create(command: Command) -> Result<Self> {
