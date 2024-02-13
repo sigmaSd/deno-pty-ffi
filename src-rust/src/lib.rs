@@ -57,7 +57,7 @@ impl PtyReader {
             // NOTE: We received the END message, this means that the process has exited
             // But there could be some pending messages in the read channel, this is especisally true in windows
             // So sleep a bit and check the channel again
-            msgs.extend(self.rx_read.recv());
+            msgs.extend(self.rx_read.iter());
 
             if msgs.len() == 1 {
                 return Ok(Message::End);
