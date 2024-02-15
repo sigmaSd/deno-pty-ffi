@@ -39,17 +39,13 @@ impl PtyReader {
             done: Cell::new(false),
         }
     }
+    //NOTE: this function should not block
     fn read(&self) -> Result<Message> {
         if self.done.get() {
             return Ok(Message::End);
         }
 
-        //NOTE: important, block until we read something
-        // then check the channel for any more available msg
-        // this saves a lot of read calls
-        let mut msgs: Vec<_> = std::iter::once(self.rx_read.recv()?)
-            .chain(self.rx_read.try_iter())
-            .collect();
+        let mut msgs: Vec<_> = self.rx_read.try_iter().collect();
 
         if msgs.contains(&Message::End) {
             self.done.set(true);
