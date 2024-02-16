@@ -118,8 +118,8 @@ export class Pty {
    * Reads data from the pty.
    * @returns A Promise that resolves to the data read from the pty.
    */
-  async read(): Promise<string | undefined> {
-    if (this.#processExited) return;
+  async read(): Promise<{ data: string; done: boolean }> {
+    if (this.#processExited) return { data: "", done: true };
     const dataBuf = new Uint8Array(8);
     const result = await LIBRARY.symbols.pty_read(this.#this, dataBuf);
     const ptr = Deno.UnsafePointer.create(
@@ -128,10 +128,10 @@ export class Pty {
     if (result === 99) {
       /* Process exited */
       this.#processExited = true;
-      return;
+      return { data: "", done: true };
     }
     if (result === -1) throw new Error(decode_cstring(ptr));
-    return decode_cstring(ptr);
+    return { data: decode_cstring(ptr), done: false };
   }
 
   /**

@@ -40,9 +40,8 @@ Deno.addSignalListener("SIGINT", () => {
 });
 
 while (true) {
-  const line = await pty.read();
-  if (!line) break;
-  // console.log(line);
+  const { data: line, done } = await pty.read();
+  if (done) break;
 
   if (line.includes("Granted") && line.includes("access")) {
     const line_split = line.split(/\s+/);

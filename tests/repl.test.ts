@@ -69,7 +69,8 @@ async function write_and_expect(pty: Pty, toWrite: string, expect: string) {
     // FIXME: in case of timout, this promise reamins alive and it keeps the test form exiting
     (async () => {
       while (1) {
-        const r = await pty.read();
+        const { data: r, done } = await pty.read();
+        if (done) break;
         if (r && r.includes(expect)) {
           return true;
         }
