@@ -1,6 +1,6 @@
 {
   "name":"@sigmasd/deno-pty-ffi",
-  "version": "0.19.6",
+  "version": "0.20.0",
   "exports": "./mod.ts",
   "tasks": {
     "build": "cargo build --manifest-path src-rust/Cargo.toml",
