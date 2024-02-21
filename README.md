@@ -8,7 +8,7 @@ a simple interface
 This module requires `--unstable-ffi`
 
 ```ts
-import { Pty } from "https://deno.land/x/deno_pty_ffi/mod.ts";
+import * as mod from "jsr:@sigmasd/deno-pty-ffi@0.20.0";
 
 const pty = new Pty({
   cmd: "bash",
