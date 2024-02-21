@@ -1,4 +1,7 @@
 {
+  "name":"@sigmasd/deno-pty-ffi",
+  "version": "0.19.6",
+  "exports": "./mod.ts",
   "tasks": {
     "build": "cargo build --manifest-path src-rust/Cargo.toml",
     // run the example using locally built rust library
