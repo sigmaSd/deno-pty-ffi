@@ -1,5 +1,40 @@
 {
   "version": "3",
+  "packages": {
+    "specifiers": {
+      "jsr:@denosaurs/plug": "jsr:@denosaurs/plug@1.0.3",
+      "jsr:@std/assert@^0.213.1": "jsr:@std/assert@0.213.1",
+      "jsr:@std/encoding@0.213.1": "jsr:@std/encoding@0.213.1",
+      "jsr:@std/fmt@0.213.1": "jsr:@std/fmt@0.213.1",
+      "jsr:@std/fs@0.213.1": "jsr:@std/fs@0.213.1",
+      "jsr:@std/path@0.213.1": "jsr:@std/path@0.213.1",
+      "jsr:@std/path@^0.213.1": "jsr:@std/path@0.213.1"
+    },
+    "jsr": {
+      "@denosaurs/plug@1.0.3": {
+        "dependencies": [
+          "jsr:@std/encoding@0.213.1",
+          "jsr:@std/fmt@0.213.1",
+          "jsr:@std/fs@0.213.1",
+          "jsr:@std/path@0.213.1"
+        ]
+      },
+      "@std/assert@0.213.1": {},
+      "@std/encoding@0.213.1": {},
+      "@std/fmt@0.213.1": {},
+      "@std/fs@0.213.1": {
+        "dependencies": [
+          "jsr:@std/assert@^0.213.1",
+          "jsr:@std/path@^0.213.1"
+        ]
+      },
+      "@std/path@0.213.1": {
+        "dependencies": [
+          "jsr:@std/assert@^0.213.1"
+        ]
+      }
+    }
+  },
   "redirects": {
     "https://deno.land/x/deno_pty_ffi/mod.ts": "https://deno.land/x/deno_pty_ffi@0.19.0/mod.ts"
   },
