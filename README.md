@@ -8,7 +8,7 @@ a simple interface
 This module requires `--unstable-ffi`
 
 ```ts
-import * as mod from "jsr:@sigmasd/deno-pty-ffi@0.20.0";
+import * as mod from "jsr:@sigma/pty-ffi";
 
 const pty = new Pty({
   cmd: "bash",
