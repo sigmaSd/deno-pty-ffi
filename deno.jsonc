@@ -1,5 +1,5 @@
 {
-  "name":"@sigmasd/deno-pty-ffi",
+  "name":"@sigma/pty-ffi",
   "version": "0.20.1",
   "exports": "./mod.ts",
   "tasks": {
