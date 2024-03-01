@@ -1,6 +1,6 @@
 {
   "name":"@sigma/pty-ffi",
-  "version": "0.20.2",
+  "version": "0.20.3",
   "exports": "./mod.ts",
   "tasks": {
     "build": "cargo build --manifest-path src-rust/Cargo.toml",
