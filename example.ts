@@ -1,5 +1,6 @@
 // full version at https://github.com/sigmaSd/Minimize-Deno
-import { Pty } from "./mod.ts";
+import { Pty } from "jsr:@sigma/pty-ffi";
+// import { Pty } from "./mod.ts";
 
 if (Deno.args.length === 0) throw new Error("no program provided");
 

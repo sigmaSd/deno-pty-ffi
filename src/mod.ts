@@ -102,6 +102,7 @@ export class Pty {
    * @param command - The command to be executed in the pty.
    */
   constructor(command: Command) {
+    console.log("Somehow this is called");
     const pty_buf = new Uint8Array(8);
     const result = LIBRARY.symbols.pty_create(
       encode_json_cstring(command),
