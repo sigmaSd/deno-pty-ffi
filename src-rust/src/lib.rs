@@ -144,6 +144,11 @@ impl Pty {
             let mut buf = [0; 512];
             loop {
                 let n = reader.read(&mut buf).expect("failed to read data");
+                if n == 0 {
+                    // the pty has already exited
+                    // so no need to send the end message?
+                    break;
+                };
                 tx_read
                     .send(Message::Data(
                         String::from_utf8(buf[0..n].to_vec()).expect("data is not valid utf8"),
@@ -390,75 +395,75 @@ mod tests {
     use super::*;
     #[test]
     fn it_works() {
-        let pty = Box::new(
-            Pty::create(Command {
-                cmd: "deno".into(),
-                args: vec!["repl".into()],
-                env: vec![("NO_COLOR".into(), "1".into())],
-            })
-            .unwrap(),
-        );
+        let mut threads = vec![];
+        for _ in 0..10 {
+            threads.push(std::thread::spawn(|| {
+                let mut pty = Box::new(
+                    Pty::create(Command {
+                        cmd: "deno".into(),
+                        args: vec!["repl".into()],
+                        env: vec![("NO_COLOR".into(), "1".into())],
+                    })
+                    .unwrap(),
+                );
 
-        // read header
-        pty.read().unwrap();
+                // read header
+                pty.read().unwrap();
 
-        let write_and_expect = |to_write: &'static str, expect: &'static str| {
-            pty.write(to_write.into()).unwrap();
+                let write_and_expect = |to_write: &'static str, expect: &'static str| {
+                    pty.write(to_write.into()).unwrap();
 
-            let (tx, rx) = mpsc::channel();
-            let tx_c = tx.clone();
-            let reader = pty.clone_reader();
-            std::thread::spawn(move || loop {
-                let r = reader.read().unwrap();
-                match r {
-                    Message::Data(data) => {
-                        if data.contains(expect) {
-                            tx.send(Ok(())).unwrap();
-                            break;
+                    let (tx, rx) = mpsc::channel();
+                    let reader = pty.clone_reader();
+                    std::thread::spawn(move || loop {
+                        let r = reader.read().unwrap();
+                        match r {
+                            Message::Data(data) => {
+                                if data.contains(expect) {
+                                    tx.send(()).unwrap();
+                                    break;
+                                }
+                            }
+                            Message::End => break,
                         }
-                    }
-                    Message::End => break,
-                }
-            });
-            std::thread::spawn(move || {
-                std::thread::sleep(std::time::Duration::from_secs(5));
-                tx_c.send(Err("timeout")).unwrap();
-            });
-            let r = rx.recv().unwrap();
-            if let Err(e) = r {
-                panic!("{e}");
-            }
-        };
+                        // std::thread::sleep_ms(500);
+                    });
+                    rx.recv().unwrap();
+                };
 
-        write_and_expect("5+4\n\r", "9");
-        write_and_expect("let a = 4; a + a\n\r", "8");
+                write_and_expect("5+4\n\r", "9");
+                write_and_expect("let a = 4; a + a\n\r", "8");
 
-        // test size, resize
-        assert!(matches!(
-            pty.get_size(),
-            Ok(PtySize {
-                rows: 24,
-                cols: 80,
-                pixel_width: 0,
-                pixel_height: 0,
-            })
-        ));
+                // test size, resize
+                assert!(matches!(
+                    pty.get_size(),
+                    Ok(PtySize {
+                        rows: 24,
+                        cols: 80,
+                        pixel_width: 0,
+                        pixel_height: 0,
+                    })
+                ));
 
-        pty.resize(PtySize {
-            rows: 50,
-            cols: 120,
-            pixel_width: 1,
-            pixel_height: 1,
-        })
-        .unwrap();
-        assert!(matches!(
-            pty.get_size(),
-            Ok(PtySize {
-                rows: 50,
-                cols: 120,
-                pixel_width: 1,
-                pixel_height: 1,
-            })
-        ));
+                pty.resize(PtySize {
+                    rows: 50,
+                    cols: 120,
+                    pixel_width: 1,
+                    pixel_height: 1,
+                })
+                .unwrap();
+                assert!(matches!(
+                    pty.get_size(),
+                    Ok(PtySize {
+                        rows: 50,
+                        cols: 120,
+                        pixel_width: 1,
+                        pixel_height: 1,
+                    })
+                ));
+                pty.ck.kill().unwrap();
+            }));
+        }
+        threads.into_iter().for_each(|t| t.join().unwrap());
     }
 }
