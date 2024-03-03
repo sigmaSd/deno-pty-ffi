@@ -426,7 +426,6 @@ mod tests {
                             }
                             Message::End => break,
                         }
-                        // std::thread::sleep_ms(500);
                     });
                     rx.recv().unwrap();
                 };
