@@ -186,6 +186,7 @@ export class Pty {
 
   /**
     Close the Pty, the pty won't be usable after this call
+    NOTE: the process isn't killed in windows (https://github.com/sigmaSd/deno-pty-ffi/issues/4)
   */
   close(): void {
     this.#processExited = true;
