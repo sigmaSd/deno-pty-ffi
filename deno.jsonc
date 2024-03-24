@@ -1,5 +1,5 @@
 {
-  "name":"@sigma/pty-ffi",
+  "name": "@sigma/pty-ffi",
   "version": "0.21.0",
   "exports": "./mod.ts",
   "tasks": {
@@ -13,5 +13,8 @@
     "test": "deno task test:rust && deno task test:deno",
     "test:rust": "cargo test --manifest-path src-rust/Cargo.toml",
     "test:deno": "deno task build && export RUST_LIB_PATH=$CARGO_TARGET_DIR/debug && deno test --unstable-ffi -A"
+  },
+  "imports": {
+    "@denosaurs/plug": "jsr:@denosaurs/plug@1.0.3"
   }
 }
