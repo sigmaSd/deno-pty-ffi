@@ -3,39 +3,35 @@ import { assertEquals } from "https://deno.land/std@0.203.0/assert/assert_equals
 import { Pty } from "../mod.ts";
 
 Deno.test("smoke", async () => {
-  const pty = new Pty({
-    cmd: "deno",
-    args: ["repl"],
-    env: [["NO_COLOR", "1"]],
-  });
+  const jobs = [];
+  for (let i = 0; i < 10; i++) {
+    jobs.push((async () => {
+      const pty = new Pty({
+        cmd: "deno",
+        args: ["repl"],
+        env: [["NO_COLOR", "1"]],
+      });
 
-  // read header
-  await pty.read();
+      // read header
+      await pty.read();
 
-  await write_and_expect(pty, "5+4\n\r", "9");
-  await write_and_expect(pty, "let a = 4; a + a\n\r", "8");
+      await write_and_expect(pty, "5+4\n\r", "9");
+      await write_and_expect(pty, "let a = 4; a + a\n\r", "8");
 
-  // test size, resize
-  assertEquals(pty.getSize(), {
-    rows: 24,
-    cols: 80,
-    pixel_height: 0,
-    pixel_width: 0,
-  });
+      // test size, resize
+      assertEquals(pty.getSize(), {
+        rows: 24,
+        cols: 80,
+        pixel_height: 0,
+        pixel_width: 0,
+      });
 
-  // close the first pty
-  // we should still create other ptys
-  pty.close();
-  const pty2 = new Pty({
-    cmd: "deno",
-    args: ["repl"],
-    env: [["NO_COLOR", "1"]],
-  });
-  // read header
-  await pty2.read();
-
-  await write_and_expect(pty2, "5+4\n\r", "9");
-  pty2.close();
+      // close the first pty
+      // we should still create other ptys
+      pty.close();
+    })());
+  }
+  await Promise.all(jobs);
 });
 
 Deno.test("getSize/resize", () => {
@@ -64,14 +60,14 @@ Deno.test("getSize/resize", () => {
 async function write_and_expect(pty: Pty, toWrite: string, expect: string) {
   await pty.write(toWrite);
 
-  let timeoutId;
+  let timeoutId: number | undefined = undefined;
   const success = await Promise.any([
     // FIXME: in case of timout, this promise reamins alive and it keeps the test form exiting
     (async () => {
-      while (1) {
+      while (true) {
         const { data: r, done } = await pty.read();
         if (done) break;
-        if (r && r.includes(expect)) {
+        if (r?.includes(expect)) {
           return true;
         }
       }
@@ -84,7 +80,7 @@ async function write_and_expect(pty: Pty, toWrite: string, expect: string) {
     })(),
   ]);
 
-  clearTimeout(timeoutId);
+  if (timeoutId !== undefined) clearTimeout(timeoutId);
 
   assert(success);
 }
