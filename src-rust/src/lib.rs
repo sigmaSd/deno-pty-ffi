@@ -3,15 +3,9 @@ use portable_pty::{
     native_pty_system, ChildKiller as Ck, CommandBuilder, MasterPty, PtySize, SlavePty,
 };
 use serde::{Deserialize, Serialize};
-use std::{
-    cell::Cell,
-    ffi::{CStr, CString},
-    io::Read,
-    mem::ManuallyDrop,
-    time::Duration,
-};
+use std::{cell::Cell, ffi::CString, io::Read, mem::ManuallyDrop, time::Duration};
 mod utils;
-use utils::{cstr_to_type, type_to_cstr};
+use utils::{boxed_error_to_cstring, cstr_to_type, type_to_cstr};
 
 pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
@@ -221,9 +215,7 @@ pub unsafe extern "C" fn pty_create(command: *mut i8, result: *mut usize) -> i8 
             0
         }
         Err(err) => {
-            *result = CString::new(err.to_string())
-                .expect("err is valid cstring")
-                .into_raw() as _;
+            *result = boxed_error_to_cstring(err).into_raw() as _;
             -1
         }
     }
@@ -243,7 +235,7 @@ pub unsafe extern "C" fn pty_read(this: *mut Pty, result: *mut usize) -> i8 {
         End,
     }
     match (|| -> Result<R> {
-        let this = ManuallyDrop::new(Box::from_raw(this));
+        let this = unsafe { &*this };
         // TODO: add a test for null byte inside str from read
         let msg = this.read()?;
         match msg {
@@ -259,9 +251,7 @@ pub unsafe extern "C" fn pty_read(this: *mut Pty, result: *mut usize) -> i8 {
             R::End => 99,
         },
         Err(err) => {
-            *result = CString::new(err.to_string())
-                .expect("err is valid cstring")
-                .into_raw() as _;
+            *result = boxed_error_to_cstring(err).into_raw() as _;
             -1
         }
     }
@@ -276,19 +266,15 @@ pub unsafe extern "C" fn pty_read(this: *mut Pty, result: *mut usize) -> i8 {
 /// Returns -1 on error
 #[no_mangle]
 pub unsafe extern "C" fn pty_write(this: *mut Pty, data: *mut i8, result: *mut usize) -> i8 {
-    fn inner(this: &Pty, data: &CStr) -> Result<()> {
+    let this = unsafe { &*this };
+    let data = ManuallyDrop::new(CString::from_raw(data));
+    match (|| {
         let data_str = data.to_str()?.to_owned(); // NOTE: can we send str in the channels ?
         this.write(data_str)
-    }
-
-    let this = ManuallyDrop::new(Box::from_raw(this));
-    let data = ManuallyDrop::new(CString::from_raw(data));
-    match inner(&this, data.as_ref()) {
-        Ok(_) => 0,
+    })() {
+        Ok(()) => 0,
         Err(err) => {
-            *result = CString::new(err.to_string())
-                .expect("err is valid cstring")
-                .into_raw() as _;
+            *result = boxed_error_to_cstring(err).into_raw() as _;
             -1
         }
     }
@@ -302,7 +288,7 @@ pub unsafe extern "C" fn pty_write(this: *mut Pty, data: *mut i8, result: *mut u
 /// Returns -1 on error
 #[no_mangle]
 pub unsafe extern "C" fn pty_get_size(this: *mut Pty, result: *mut usize) -> i8 {
-    let this = ManuallyDrop::new(Box::from_raw(this));
+    let this = unsafe { &*this };
     match (|| -> Result<CString> {
         let size = this.get_size()?;
         type_to_cstr(&size)
@@ -312,9 +298,7 @@ pub unsafe extern "C" fn pty_get_size(this: *mut Pty, result: *mut usize) -> i8 
             0
         }
         Err(err) => {
-            *result = CString::new(err.to_string())
-                .expect("err is valid cstring")
-                .into_raw() as _;
+            *result = boxed_error_to_cstring(err).into_raw() as _;
             -1
         }
     }
@@ -322,14 +306,14 @@ pub unsafe extern "C" fn pty_get_size(this: *mut Pty, result: *mut usize) -> i8 
 
 /// # Safety
 /// - Requires a valid pointer to a Pty
-/// - Requires a valid pointer to a PtySize
+/// - Requires a valid pointer to a PtySize encoded as CString
 /// - Requires a valid pointer to a buffer of size 8
 /// to write the error to
 ///
 /// Returns -1 on error
 #[no_mangle]
 pub unsafe extern "C" fn pty_resize(this: *mut Pty, size: *mut i8, result: *mut usize) -> i8 {
-    let this = ManuallyDrop::new(Box::from_raw(this));
+    let this = unsafe { &*this };
     match (|| -> Result<()> {
         let size = cstr_to_type::<PtySize>(size)?;
         this.resize(size)?;
@@ -337,9 +321,7 @@ pub unsafe extern "C" fn pty_resize(this: *mut Pty, size: *mut i8, result: *mut 
     })() {
         Ok(()) => 0,
         Err(err) => {
-            *result = CString::new(err.to_string())
-                .expect("err is valid cstring")
-                .into_raw() as _;
+            *result = boxed_error_to_cstring(err).into_raw() as _;
             -1
         }
     }
@@ -358,39 +340,6 @@ pub unsafe extern "C" fn pty_close(this: *mut Pty) {
         let mut this = Box::from_raw(this);
         // NOTE: maybe propage the possible error
         let _ = this.ck.kill();
-    }
-}
-
-/// # Safety
-/// Requires a pointer to a buffer of size 8 to write the result to
-///
-/// The result is either
-/// - tmpDir as cstring
-/// - error as cstring
-///
-/// Returns -1 on error
-#[no_mangle]
-pub unsafe extern "C" fn tmp_dir(result: *mut usize) -> i8 {
-    fn inner() -> Result<CString> {
-        Ok(CString::new(
-            std::env::temp_dir()
-                .to_str()
-                .ok_or("path is not valid utf8?")?
-                .to_owned(),
-        )?)
-    }
-
-    match inner() {
-        Ok(data) => {
-            *result = data.into_raw() as _;
-            0
-        }
-        Err(err) => {
-            *result = CString::new(err.to_string())
-                .expect("err is valid cstring")
-                .into_raw() as _;
-            -1
-        }
     }
 }
 

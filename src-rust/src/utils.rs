@@ -6,6 +6,7 @@ use std::{ffi::CString, mem::ManuallyDrop};
 /// expects
 /// - valid ptr to a T encoded as CString encoding a JSON value
 /// returns a T
+/// This function doens't consume the CString
 pub unsafe fn cstr_to_type<T: DeserializeOwned>(cstr: *mut i8) -> Result<T> {
     let cstr = ManuallyDrop::new(CString::from_raw(cstr));
     Ok(serde_json::from_str(cstr.to_str()?)?)
@@ -13,4 +14,8 @@ pub unsafe fn cstr_to_type<T: DeserializeOwned>(cstr: *mut i8) -> Result<T> {
 
 pub fn type_to_cstr<T: Serialize>(t: &T) -> Result<CString> {
     Ok(CString::new(serde_json::to_string(&t)?)?)
+}
+
+pub fn boxed_error_to_cstring(err: Box<dyn std::error::Error>) -> CString {
+    return CString::new(err.to_string()).expect("failed to create cstring");
 }

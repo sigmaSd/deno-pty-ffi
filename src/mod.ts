@@ -1,10 +1,10 @@
 import { type Command, instantiate, type PtySize } from "./ffi.ts";
 import {
-  createPtrFromBuf,
-  decode_cstring,
-  decode_json_cstring,
-  encode_cstring,
-  encode_json_cstring,
+  createPtrFromBuffer,
+  decodeCstring,
+  decodeJsonCstring,
+  encodeCstring,
+  encodeJsonCstring,
 } from "./utils.ts";
 
 // NOTE: consier exporting this, so the user decides when to instantiate
@@ -25,11 +25,11 @@ export class Pty {
   constructor(command: Command) {
     const pty_buf = new Uint8Array(8);
     const result = LIBRARY.symbols.pty_create(
-      encode_json_cstring(command),
+      encodeJsonCstring(command),
       pty_buf,
     );
-    const ptr = createPtrFromBuf(pty_buf);
-    if (result === -1) throw new Error(decode_cstring(ptr));
+    const ptr = createPtrFromBuffer(pty_buf);
+    if (result === -1) throw new Error(decodeCstring(ptr));
     this.#this = ptr;
   }
 
@@ -41,15 +41,16 @@ export class Pty {
     if (this.#processExited) return { data: "", done: true };
     const dataBuf = new Uint8Array(8);
     const result = await LIBRARY.symbols.pty_read(this.#this, dataBuf);
-    const ptr = createPtrFromBuf(dataBuf);
 
     if (result === 99) {
       /* Process exited */
       this.#processExited = true;
       return { data: "", done: true };
     }
-    if (result === -1) throw new Error(decode_cstring(ptr));
-    return { data: decode_cstring(ptr), done: false };
+    const ptr = createPtrFromBuffer(dataBuf);
+
+    if (result === -1) throw new Error(decodeCstring(ptr));
+    return { data: decodeCstring(ptr), done: false };
   }
 
   /**
@@ -62,11 +63,11 @@ export class Pty {
     const errBuf = new Uint8Array(8);
     const result = await LIBRARY.symbols.pty_write(
       this.#this,
-      encode_cstring(data),
+      encodeCstring(data),
       errBuf,
     );
     if (result === -1) {
-      throw new Error(decode_cstring(createPtrFromBuf(errBuf)));
+      throw new Error(decodeCstring(createPtrFromBuffer(errBuf)));
     }
   }
 
@@ -77,9 +78,9 @@ export class Pty {
   getSize(): PtySize {
     const dataBuf = new Uint8Array(8);
     const result = LIBRARY.symbols.pty_get_size(this.#this, dataBuf);
-    const ptr = createPtrFromBuf(dataBuf);
-    if (result === -1) throw new Error(decode_cstring(ptr));
-    return decode_json_cstring(ptr);
+    const ptr = createPtrFromBuffer(dataBuf);
+    if (result === -1) throw new Error(decodeCstring(ptr));
+    return decodeJsonCstring(ptr);
   }
 
   /**
@@ -90,11 +91,11 @@ export class Pty {
     const errBuf = new Uint8Array(8);
     const result = LIBRARY.symbols.pty_resize(
       this.#this,
-      encode_json_cstring(size),
+      encodeJsonCstring(size),
       errBuf,
     );
     if (result === -1) {
-      throw new Error(decode_cstring(createPtrFromBuf(errBuf)));
+      throw new Error(decodeCstring(createPtrFromBuffer(errBuf)));
     }
   }
 
@@ -105,17 +106,5 @@ export class Pty {
   close(): void {
     this.#processExited = true;
     LIBRARY.symbols.pty_close(this.#this);
-  }
-
-  /**
-   * Gets the temporary directory path.
-   * @returns The path to the temporary directory.
-   */
-  tmpDir(): string {
-    const tempDirBuf = new Uint8Array(8);
-    const result = LIBRARY.symbols.tmp_dir(tempDirBuf);
-    const ptr = createPtrFromBuf(tempDirBuf);
-    if (result === -1) throw new Error(decode_cstring(ptr));
-    return decode_cstring(ptr);
   }
 }

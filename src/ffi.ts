@@ -1,4 +1,5 @@
 import * as plug from "@denosaurs/plug";
+import { version } from "../version.ts";
 /**
  * Represents a command to be executed in the pty.
  */
@@ -49,20 +50,12 @@ const SYMBOLS = {
     parameters: ["pointer"],
     result: "void",
   },
-  tmp_dir: {
-    parameters: ["buffer"],
-    result: "i8",
-  },
-} as const;
+} satisfies Deno.ForeignLibraryInterface;
 
 export async function instantiate(): Promise<
   Deno.DynamicLibrary<typeof SYMBOLS>
 > {
   const name = "pty";
-  // Tag version with the prebuilt lib
-  // It doesn't have to be the same as the library version
-  // Only update it when the rust library gets updated
-  const version = "0.21.0";
   const url =
     `https://github.com/sigmaSd/deno-pty-ffi/releases/download/${version}`;
 

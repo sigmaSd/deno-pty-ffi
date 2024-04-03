@@ -22,19 +22,11 @@ Deno.addSignalListener("SIGINT", () => {
   console.log(permissions);
   console.log("Command:");
   console.log(
-    "deno run " +
-      (
-        permissions.read ? "--allow-read=" + permissions.read : ""
-      ) + " " +
-      (
-        permissions.write ? "--allow-write=" + permissions.write : ""
-      ) + " " +
-      (
-        permissions.net ? "--allow-net=" + permissions.net : ""
-      ) + " " +
-      (
-        permissions.env ? "--allow-env=" + permissions.env : ""
-      ),
+    `deno run ${permissions.read ? `--allow-read=${permissions.read}` : ""} ${
+      permissions.write ? `--allow-write=${permissions.write}` : ""
+    } ${permissions.net ? `--allow-net=${permissions.net}` : ""} ${
+      permissions.env ? `--allow-env=${permissions.env}` : ""
+    }`,
   );
   Deno.exit();
 });
@@ -52,9 +44,6 @@ while (true) {
     switch (permission) {
       case "CWD":
         permission = Deno.cwd();
-        break;
-      case "TMP":
-        permission = pty.tmpDir();
         break;
     }
 
