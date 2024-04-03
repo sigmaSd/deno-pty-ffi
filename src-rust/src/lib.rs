@@ -353,14 +353,12 @@ mod tests {
         let mut threads = vec![];
         for _ in 0..10 {
             threads.push(std::thread::spawn(|| {
-                let pty = Box::new(
-                    Pty::create(Command {
-                        cmd: "deno".into(),
-                        args: vec!["repl".into()],
-                        env: vec![("NO_COLOR".into(), "1".into())],
-                    })
-                    .unwrap(),
-                );
+                let pty = Pty::create(Command {
+                    cmd: "deno".into(),
+                    args: vec!["repl".into()],
+                    env: vec![("NO_COLOR".into(), "1".into())],
+                })
+                .unwrap();
 
                 // read header
                 pty.read().unwrap();
