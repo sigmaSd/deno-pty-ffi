@@ -1,11 +1,9 @@
 name: Release libs
 
 on:
-  workflow_dispatch:
-    inputs:
-      tag:
-        description: "tag name"
-        required: true
+  push:
+    tags:
+      - '*'
 
 permissions:
   contents: write
