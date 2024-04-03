@@ -33,7 +33,7 @@ jobs:
     # NOTE: make macos testing easier for users
     - if: runner.os == 'macOS'
       name: Run tests MacOs
-      run: export CARGO_TARGET_DIR=target && export RUST_LIB_PATH=$CARGO_TARGET_DIR/debug && deno task build && deno task test:rust && mv $CARGO_TARGET_DIR/debug/libpty.dylib $CARGO_TARGET_DIR/debug/libpty_x86_64.dylib && deno test --unstable -A
+      run: export CARGO_TARGET_DIR=target && export RUST_LIB_PATH=$CARGO_TARGET_DIR/debug && deno task build && deno task test:rust && mv $CARGO_TARGET_DIR/debug/libpty.dylib $CARGO_TARGET_DIR/debug/libpty_x86_64.dylib && deno test --unstable-ffi -A
 
     - if: runner.os == 'Windows'
       name: Run tests Windows
