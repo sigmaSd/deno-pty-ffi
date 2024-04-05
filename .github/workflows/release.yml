@@ -35,7 +35,7 @@ jobs:
         mv src-rust/target/release/libpty.dylib libpty_$(uname -m).dylib
 
     - name: Upload MacOS lib
-      if: runner.os == 'Linux'
+      if: runner.os == 'MacOS'
       uses: svenstaro/upload-release-action@v2
       with:
         file: libpty_*.dylib
