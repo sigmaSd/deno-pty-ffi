@@ -14,7 +14,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: [ubuntu-latest, windows-latest, macos-latest, macos-14]
 
     steps:
     - uses: actions/checkout@v2
@@ -23,51 +23,27 @@ jobs:
       with:
         toolchain: stable
 
-    - uses: goto-bus-stop/setup-zig@v1
-      with:
-        version: 0.10.1
-      if: runner.os == 'Linux'
-
     - name: Build
       uses: actions-rs/cargo@v1
       with:
         command: build
         args: --release --manifest-path src-rust/Cargo.toml
 
-    - name: Release MacOS lib1
+    - name: Correct MacOS lib name
       if: runner.os == 'MacOS'
       run: |
-        mv src-rust/target/release/libpty.dylib libpty_x86_64.dylib
+        mv src-rust/target/release/libpty.dylib libpty_$(uname -m).dylib
 
-    - name: Release MacOS lib2
-      if: runner.os == 'MacOS'
-      uses: svenstaro/upload-release-action@v2
-      with:
-        file: libpty_x86_64.dylib
-        tag: ${{ github.ref }}
-        overwrite: true
-
-    - name: Install cargo-zigbuild
-      if: runner.os == 'Linux'
-      run: |
-        cargo install cargo-zigbuild
-
-    - name: Release MacOS arm lib1
-      if: runner.os == 'Linux'
-      run: |
-        rustup target add aarch64-apple-darwin
-        cargo zigbuild --release --manifest-path src-rust/Cargo.toml --target aarch64-apple-darwin
-        mv src-rust/target/aarch64-apple-darwin/release/libpty.dylib libpty_aarch64.dylib
-
-    - name: Release MacOS arm lib2
+    - name: Upload MacOS lib
       if: runner.os == 'Linux'
       uses: svenstaro/upload-release-action@v2
       with:
-        file: libpty_aarch64.dylib
+        file: libpty_*.dylib
         tag: ${{ github.ref }}
         overwrite: true
+        file_globe: true
 
-    - name: Release Linux lib
+    - name: Upload Linux lib
       if: runner.os == 'Linux'
       uses: svenstaro/upload-release-action@v2
       with:
@@ -75,7 +51,7 @@ jobs:
         tag: ${{ github.ref }}
         overwrite: true
 
-    - name: Release Windows lib
+    - name: Upload Windows lib
       if: runner.os == 'Windows'
       uses: svenstaro/upload-release-action@v2
       with:
