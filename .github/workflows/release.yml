@@ -41,7 +41,7 @@ jobs:
         file: libpty_*.dylib
         tag: ${{ github.ref }}
         overwrite: true
-        file_globe: true
+        file_glob: true
 
     - name: Upload Linux lib
       if: runner.os == 'Linux'
