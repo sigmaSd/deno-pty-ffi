@@ -1,5 +1,5 @@
 import * as plug from "@denosaurs/plug";
-import { version } from "../version.ts";
+import metadata from "../deno.json" with { type: "json" };
 /**
  * Represents a command to be executed in the pty.
  */
@@ -57,7 +57,7 @@ export async function instantiate(): Promise<
 > {
   const name = "pty";
   const url =
-    `https://github.com/sigmaSd/deno-pty-ffi/releases/download/${version}`;
+    `https://github.com/sigmaSd/deno-pty-ffi/releases/download/${metadata.version}`;
 
   return await plug.dlopen(
     {
