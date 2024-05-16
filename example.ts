@@ -51,6 +51,8 @@ while (true) {
     permissions[permission_type].push(permission);
   }
 
+  // wait a bit for read data
+  await new Promise((r) => setTimeout(r, 100));
   if (line.includes("Allow?")) {
     await pty.write("y\n");
   }
