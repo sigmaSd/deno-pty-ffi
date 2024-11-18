@@ -5,6 +5,7 @@ use portable_pty::{
 use serde::{Deserialize, Serialize};
 use std::{cell::Cell, ffi::CString, io::Read, mem::ManuallyDrop, time::Duration};
 mod utils;
+use std::os::raw::c_char;
 use utils::{boxed_error_to_cstring, cstr_to_type, type_to_cstr};
 
 pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
@@ -203,7 +204,7 @@ impl Pty {
 /// Returns -1 on error
 #[no_mangle]
 // can't use new since its a reserved keyword in javascript
-pub unsafe extern "C" fn pty_create(command: *mut i8, result: *mut usize) -> i8 {
+pub unsafe extern "C" fn pty_create(command: *mut c_char, result: *mut usize) -> i8 {
     let pty = (|| -> Result<Box<Pty>> {
         let command = cstr_to_type::<Command>(command)?;
         let pty = Pty::create(command)?;
@@ -265,7 +266,7 @@ pub unsafe extern "C" fn pty_read(this: *mut Pty, result: *mut usize) -> i8 {
 ///
 /// Returns -1 on error
 #[no_mangle]
-pub unsafe extern "C" fn pty_write(this: *mut Pty, data: *mut i8, result: *mut usize) -> i8 {
+pub unsafe extern "C" fn pty_write(this: *mut Pty, data: *mut c_char, result: *mut usize) -> i8 {
     let this = unsafe { &*this };
     let data = ManuallyDrop::new(CString::from_raw(data));
     match (|| {
@@ -312,7 +313,7 @@ pub unsafe extern "C" fn pty_get_size(this: *mut Pty, result: *mut usize) -> i8 
 ///
 /// Returns -1 on error
 #[no_mangle]
-pub unsafe extern "C" fn pty_resize(this: *mut Pty, size: *mut i8, result: *mut usize) -> i8 {
+pub unsafe extern "C" fn pty_resize(this: *mut Pty, size: *mut c_char, result: *mut usize) -> i8 {
     let this = unsafe { &*this };
     match (|| -> Result<()> {
         let size = cstr_to_type::<PtySize>(size)?;
