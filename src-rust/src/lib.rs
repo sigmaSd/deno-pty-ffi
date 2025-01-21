@@ -81,6 +81,7 @@ struct Command {
     cmd: String,
     args: Vec<String>,
     env: Vec<(String, String)>,
+    cwd: Option<String>,
 }
 
 #[derive(PartialEq, Eq, Debug)]
@@ -111,7 +112,10 @@ impl Pty {
         // https://github.com/wez/wezterm/issues/4205
         cmd.env("PATH", std::env::var("PATH")?);
         cmd.args(&command.args);
-        cmd.cwd(std::env::current_dir()?);
+        match command.cwd {
+            Some(cwd) => cmd.cwd(cwd),
+            None => cmd.cwd(std::env::current_dir()?),
+        }
         for env in command.env {
             cmd.env(env.0, env.1);
         }
@@ -358,6 +362,7 @@ mod tests {
                     cmd: "deno".into(),
                     args: vec!["repl".into()],
                     env: vec![("NO_COLOR".into(), "1".into())],
+                    cwd: None,
                 })
                 .unwrap();
 

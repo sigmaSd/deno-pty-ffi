@@ -56,6 +56,24 @@ Deno.test("getSize/resize", () => {
   pty.close();
 });
 
+Deno.test("with cwd set", async () => {
+  const tmpDir = await Deno.makeTempDir();
+  const pty = new Pty({
+    cmd: "deno",
+    args: ["repl"],
+    env: [["NO_COLOR", "1"]],
+    cwd: tmpDir,
+  });
+
+  // read header
+  await pty.read();
+
+  await write_and_expect(pty, "5+4\n\r", "9");
+  await write_and_expect(pty, "let a = 4; a + a\n\r", "8");
+
+  pty.close();
+});
+
 async function write_and_expect(pty: Pty, toWrite: string, expect: string) {
   await pty.write(toWrite);
 

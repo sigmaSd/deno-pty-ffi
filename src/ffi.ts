@@ -10,6 +10,8 @@ export interface Command {
   args: string[];
   /** The environment variables for the command. */
   env: [string, string][];
+  /** The working directory for the command. defaults to the current working directory. */
+  cwd?: string;
 }
 
 /**
