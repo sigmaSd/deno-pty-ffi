@@ -69,7 +69,7 @@ export async function instantiate(): Promise<
       cache: Deno.env.get("RUST_LIB_PATH") ? "reloadAll" : "use",
       suffixes: {
         linux: {
-          aarch64: "_arm64",
+          aarch64: "_aarch64",
           x86_64: "_x86_64",
         },
         darwin: {
