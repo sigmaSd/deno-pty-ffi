@@ -93,7 +93,7 @@ enum Message {
 impl Pty {
     fn create(command: Command) -> Result<Self> {
         // Use the native pty implementation for the system
-        let pty_system = native_pty_system();
+        let pty_system = dbg!(native_pty_system());
 
         // Create a new pty
         let pair = pty_system.openpty(PtySize {
@@ -107,6 +107,7 @@ impl Pty {
             pixel_width: 0,
             pixel_height: 0,
         })?;
+        dbg!(&pair);
 
         let mut cmd = CommandBuilder::new(command.cmd);
         // https://github.com/wez/wezterm/issues/4205
@@ -120,10 +121,12 @@ impl Pty {
             cmd.env(env.0, env.1);
         }
 
+        dbg!(&cmd);
         let (tx_read, rx_read) = unbounded();
 
         let mut child = pair.slave.spawn_command(cmd)?;
         let ck = child.clone_killer();
+        dbg!("after clone");
 
         // If we do a pty.read after the process exit, read will hang
         // Thats why we spawn another thread to wait for the child
@@ -355,6 +358,7 @@ mod tests {
     use super::*;
     #[test]
     fn it_works() {
+        dbg!("here");
         let pty = Pty::create(Command {
             cmd: "deno".into(),
             args: vec!["repl".into()],
@@ -362,6 +366,7 @@ mod tests {
             cwd: None,
         })
         .unwrap();
+        dbg!("after");
 
         // read header
         dbg!(pty.read().unwrap());
