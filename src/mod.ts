@@ -35,12 +35,12 @@ export class Pty {
 
   /**
    * Reads data from the pty.
-   * @returns A Promise that resolves to the data read from the pty.
+   * @returns The data read from the pty.
    */
-  async read(): Promise<{ data: string; done: boolean }> {
+  read(): { data: string; done: boolean } {
     if (this.#processExited) return { data: "", done: true };
     const dataBuf = new Uint8Array(8);
-    const result = await LIBRARY.symbols.pty_read(this.#this, dataBuf);
+    const result = LIBRARY.symbols.pty_read(this.#this, dataBuf);
 
     if (result === 99) {
       /* Process exited */
@@ -57,11 +57,11 @@ export class Pty {
    * Writes data to the pty.
    * @param data - The data to write to the pty.
    */
-  async write(data: string): Promise<void> {
+  write(data: string): void {
     // NOTE: maybe we should tell the user that the process exited
     if (this.#processExited) return;
     const errBuf = new Uint8Array(8);
-    const result = await LIBRARY.symbols.pty_write(
+    const result = LIBRARY.symbols.pty_write(
       this.#this,
       encodeCstring(data),
       errBuf,

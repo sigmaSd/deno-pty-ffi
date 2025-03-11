@@ -16,8 +16,8 @@ const pty = new Pty({
 
 // executs ls -la repedetly and shows output
 while (true) {
-  await pty.write("ls -la\n");
-  const { data, done } = await pty.read();
+  pty.write("ls -la\n");
+  const { data, done } = pty.read();
   if (done) break;
   console.log(data);
   await new Promise((r) => setTimeout(r, 100));

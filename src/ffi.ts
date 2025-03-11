@@ -33,12 +33,10 @@ const SYMBOLS = {
   pty_read: {
     parameters: ["pointer", "buffer"],
     result: "i8",
-    nonblocking: true,
   },
   pty_write: {
     parameters: ["pointer", "buffer", "buffer"],
     result: "i8",
-    nonblocking: true,
   },
   pty_get_size: {
     parameters: ["pointer", "buffer"],

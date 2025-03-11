@@ -379,14 +379,17 @@ mod tests {
                         match r {
                             Message::Data(data) => {
                                 if data.contains(expect) {
-                                    tx.send(()).unwrap();
+                                    tx.send(Ok(())).unwrap();
                                     break;
                                 }
                             }
-                            Message::End => break,
+                            Message::End => {
+                                tx.send(Err(())).unwrap();
+                                break;
+                            }
                         }
                     });
-                    rx.recv().unwrap();
+                    rx.recv().unwrap().unwrap();
                 };
 
                 write_and_expect("5+4\n\r", "9");
