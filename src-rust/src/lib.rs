@@ -388,6 +388,7 @@ mod tests {
                                 break;
                             }
                         }
+                        std::thread::sleep(std::time::Duration::from_millis(100));
                     });
                     rx.recv().unwrap().unwrap();
                 };
