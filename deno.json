@@ -3,7 +3,8 @@
   "version": "0.27.0",
   "exports": "./mod.ts",
   "tasks": {
-    "build": "cargo build --manifest-path src-rust/Cargo.toml && mv $CARGO_TARGET_DIR/debug/libpty.so $CARGO_TARGET_DIR/debug/libpty_$(uname -m).so",
+    "build": "cargo build --manifest-path src-rust/Cargo.toml",
+    "build:linux": "cargo task build && mv $CARGO_TARGET_DIR/debug/libpty.so $CARGO_TARGET_DIR/debug/libpty_$(uname -m).so",
     "dev": "deno task build && deno task dev:fast",
     "dev:fast": "export RUST_LIB_PATH=$CARGO_TARGET_DIR/debug && deno run -A",
     "fmt": "deno fmt && cargo fmt --manifest-path src-rust/Cargo.toml",
