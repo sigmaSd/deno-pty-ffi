@@ -23,15 +23,14 @@ jobs:
     - if: runner.os == 'Linux'
       name: Run docs lint
       run: deno doc --lint mod.ts
-
     - if: runner.os == 'Linux'
       name: Run tests Linux
-      run: CARGO_TARGET_DIR=target deno task test
+      run: export CARGO_TARGET_DIR=target && export RUST_LIB_PATH=$CARGO_TARGET_DIR/debug && deno task build && deno task test:rust && mv $CARGO_TARGET_DIR/debug/libpty.dylib $CARGO_TARGET_DIR/debug/libpty_$(uname -m).so && deno test -A
 
     # NOTE: make macos testing easier for users
     - if: runner.os == 'macOS'
       name: Run tests MacOs
-      run: export CARGO_TARGET_DIR=target && export RUST_LIB_PATH=$CARGO_TARGET_DIR/debug && deno task build && deno task test:rust && mv $CARGO_TARGET_DIR/debug/libpty.dylib $CARGO_TARGET_DIR/debug/libpty_arm64.dylib && deno test --unstable-ffi -A
+      run: export CARGO_TARGET_DIR=target && export RUST_LIB_PATH=$CARGO_TARGET_DIR/debug && deno task build && deno task test:rust && mv $CARGO_TARGET_DIR/debug/libpty.dylib $CARGO_TARGET_DIR/debug/libpty_$(uname -m).dylib && deno test -A
 
     - if: runner.os == 'Windows'
       name: Run tests Windows
