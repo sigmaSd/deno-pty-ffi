@@ -364,16 +364,17 @@ mod tests {
         .unwrap();
 
         // read header
-        pty.read().unwrap();
+        dbg!(pty.read().unwrap());
 
         let write_and_expect = |to_write: &'static str, expect: &'static str| {
             pty.write(to_write.into()).unwrap();
+            dbg!("written");
 
             let (tx, rx) = mpsc::channel();
             let reader = pty.clone_reader();
             std::thread::spawn(move || loop {
-                let r = reader.read().unwrap();
-                match r {
+                let r = dbg!(reader.read().unwrap());
+                match dbg!(r) {
                     Message::Data(data) => {
                         if data.contains(expect) {
                             tx.send(Ok(())).unwrap();
@@ -386,7 +387,7 @@ mod tests {
                     }
                 }
             });
-            rx.recv().unwrap().unwrap();
+            dbg!(rx.recv().unwrap().unwrap());
         };
 
         write_and_expect("5+4\n\r", "9");
