@@ -13,6 +13,6 @@
     "test:deno": "deno task build && export RUST_LIB_PATH=$CARGO_TARGET_DIR/debug && deno test --unstable-ffi -A"
   },
   "imports": {
-    "@denosaurs/plug": "jsr:@denosaurs/plug@1.0.5"
+    "@denosaurs/plug": "jsr:@denosaurs/plug@1.0.6"
   }
 }
