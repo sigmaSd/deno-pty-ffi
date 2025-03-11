@@ -6,8 +6,6 @@ a simple interface
 
 ## Usage
 
-This module requires `--unstable-ffi`
-
 ```ts
 import { Pty } from "jsr:@sigma/pty-ffi";
 

@@ -6,7 +6,7 @@ a simple interface
 ## Usage
 
 ```ts
-import * as mod from "jsr:@sigma/pty-ffi";
+import { Pty } from "jsr:@sigma/pty-ffi";
 
 const pty = new Pty({
   cmd: "bash",
