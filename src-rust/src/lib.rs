@@ -386,6 +386,7 @@ mod tests {
                         break;
                     }
                 }
+                std::thread::sleep(std::time::Duration::from_millis(100));
             });
             dbg!(rx.recv().unwrap().unwrap());
         };
