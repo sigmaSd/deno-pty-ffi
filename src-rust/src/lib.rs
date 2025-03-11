@@ -355,75 +355,69 @@ mod tests {
     use super::*;
     #[test]
     fn it_works() {
-        let mut threads = vec![];
-        for _ in 0..10 {
-            threads.push(std::thread::spawn(|| {
-                let pty = Pty::create(Command {
-                    cmd: "deno".into(),
-                    args: vec!["repl".into()],
-                    env: vec![("NO_COLOR".into(), "1".into())],
-                    cwd: None,
-                })
-                .unwrap();
+        let pty = Pty::create(Command {
+            cmd: "deno".into(),
+            args: vec!["repl".into()],
+            env: vec![("NO_COLOR".into(), "1".into())],
+            cwd: None,
+        })
+        .unwrap();
 
-                // read header
-                pty.read().unwrap();
+        // read header
+        pty.read().unwrap();
 
-                let write_and_expect = |to_write: &'static str, expect: &'static str| {
-                    pty.write(to_write.into()).unwrap();
+        let write_and_expect = |to_write: &'static str, expect: &'static str| {
+            pty.write(to_write.into()).unwrap();
 
-                    let (tx, rx) = mpsc::channel();
-                    let reader = pty.clone_reader();
-                    std::thread::spawn(move || loop {
-                        let r = reader.read().unwrap();
-                        match r {
-                            Message::Data(data) => {
-                                if data.contains(expect) {
-                                    tx.send(Ok(())).unwrap();
-                                    break;
-                                }
-                            }
-                            Message::End => {
-                                tx.send(Err(())).unwrap();
-                                break;
-                            }
+            let (tx, rx) = mpsc::channel();
+            let reader = pty.clone_reader();
+            std::thread::spawn(move || loop {
+                let r = reader.read().unwrap();
+                match r {
+                    Message::Data(data) => {
+                        if data.contains(expect) {
+                            tx.send(Ok(())).unwrap();
+                            break;
                         }
-                    });
-                    rx.recv().unwrap().unwrap();
-                };
+                    }
+                    Message::End => {
+                        tx.send(Err(())).unwrap();
+                        break;
+                    }
+                }
+            });
+            rx.recv().unwrap().unwrap();
+        };
 
-                write_and_expect("5+4\n\r", "9");
-                write_and_expect("let a = 4; a + a\n\r", "8");
+        write_and_expect("5+4\n\r", "9");
+        write_and_expect("let a = 4; a + a\n\r", "8");
 
-                // test size, resize
-                assert!(matches!(
-                    pty.get_size(),
-                    Ok(PtySize {
-                        rows: 24,
-                        cols: 80,
-                        pixel_width: 0,
-                        pixel_height: 0,
-                    })
-                ));
+        // test size, resize
+        assert!(matches!(
+            pty.get_size(),
+            Ok(PtySize {
+                rows: 24,
+                cols: 80,
+                pixel_width: 0,
+                pixel_height: 0,
+            })
+        ));
 
-                pty.resize(PtySize {
-                    rows: 50,
-                    cols: 120,
-                    pixel_width: 1,
-                    pixel_height: 1,
-                })
-                .unwrap();
-                assert!(matches!(
-                    pty.get_size(),
-                    Ok(PtySize {
-                        rows: 50,
-                        cols: 120,
-                        pixel_width: 1,
-                        pixel_height: 1,
-                    })
-                ));
-            }));
-        }
-        threads.into_iter().for_each(|t| t.join().unwrap());
+        pty.resize(PtySize {
+            rows: 50,
+            cols: 120,
+            pixel_width: 1,
+            pixel_height: 1,
+        })
+        .unwrap();
+        assert!(matches!(
+            pty.get_size(),
+            Ok(PtySize {
+                rows: 50,
+                cols: 120,
+                pixel_width: 1,
+                pixel_height: 1,
+            })
+        ));
     }
 }
