@@ -14,7 +14,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-13, macos-latest]
+        os: [ubuntu-latest, ubuntu-24.04-arm, windows-latest, macos-13, macos-latest]
 
     steps:
     - uses: actions/checkout@v2
@@ -42,12 +42,17 @@ jobs:
         tag: ${{ github.ref }}
         overwrite: true
         file_glob: true
+        
+    - name: Correct linux lib name
+      if: runner.os == 'Linux'
+      run: |
+        mv src-rust/target/release/libpty.so libpty_$(uname -m).so
 
     - name: Upload Linux lib
       if: runner.os == 'Linux'
       uses: svenstaro/upload-release-action@v2
       with:
-        file: src-rust/target/release/libpty.so
+        file: src-rust/target/release/libpty_$(uname -m).so
         tag: ${{ github.ref }}
         overwrite: true
 
