@@ -46,7 +46,7 @@ jobs:
       if: runner.os == 'Linux'
       uses: svenstaro/upload-release-action@v2
       with:
-        file: src-rust/target/release/libpty_*.so
+        file: libpty_*.so
         tag: ${{ github.ref }}
         overwrite: true
         file_glob: true
