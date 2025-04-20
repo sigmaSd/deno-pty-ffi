@@ -130,59 +130,6 @@ export class Pty {
   }
 
   /**
-   * Reads output from the PTY's pseudoterminal master file descriptor, blocking
-   * until data becomes available or the child process exits.
-   * If the child process associated with the PTY has exited, it returns a result
-   * indicating completion ({ done: true, data: undefined }).
-   *
-   * @returns {PtyReadResult} An object containing the data read (as a string)
-   *                         or an indication that the process has finished.
-   * @throws {Error} If the Pty has already been closed (`close()` was called).
-   * @throws {Error} If the underlying FFI call to `pty_read_sync` fails and returns an error message.
-   * @throws {Error} If the FFI call returns an unexpected status code.
-   */
-  readSync(): PtyReadResult {
-    if (!this.#ptr) throw new Error("Pty is closed.");
-
-    // Prepare buffer for Rust to write the result pointer (data CString* or error CString*)
-    const resultPtrBuf = new BigUint64Array(1);
-    // Call FFI: pty_read_sync(pty_ptr, result_ptr_buf) -> status
-    const status = LIBRARY.symbols.pty_read_sync(this.#ptr, resultPtrBuf);
-
-    switch (status) {
-      case 0: { // Success, data available (blocking ensures *some* data or EOF)
-        const dataPtr = readPointerFromResultBuffer(resultPtrBuf);
-        if (!dataPtr) {
-          // Similar to non-blocking read, a null pointer after status 0 is unexpected.
-          console.warn(
-            "pty_read_sync returned status 0 but a null data pointer.",
-          );
-          // It's unclear if this path should yield "" or throw. Returning "" seems less disruptive.
-          return { data: "", done: false };
-        }
-        try {
-          // Decode the CString pointer received from Rust
-          const data = decodeCString(dataPtr);
-          return { data, done: false };
-        } finally {
-          // Free the CString memory allocated by Rust
-          freeRustString(LIBRARY, dataPtr);
-        }
-      }
-      case 99: // Special status code indicating the process has finished
-        return { done: true, data: "" };
-      case -1: { // Error occurred
-        // resultPtrBuf contains the error CString pointer
-        const errorMsg = readErrorAndFree(LIBRARY, resultPtrBuf);
-        throw new Error(`Pty readSync failed: ${errorMsg}`);
-      }
-      default:
-        // Should not happen with the current Rust implementation
-        throw new Error(`Pty readSync returned unexpected status: ${status}`);
-    }
-  }
-
-  /**
    * Writes the given data (as a string) to the PTY's input (master file descriptor).
    * This data is typically forwarded to the standard input of the child process.
    * The string is encoded as a null-terminated C string before being passed to the FFI.

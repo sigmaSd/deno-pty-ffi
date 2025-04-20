@@ -40,11 +40,6 @@ const SYMBOLS = {
     parameters: ["pointer", "buffer"], // pty_ptr, result_usize_ptr
     result: "i8", // Status code (0: data, 99: end, -1: error)
   },
-  // Input: Pty Pointer. Output: Data CString pointer or Error CString pointer
-  pty_read_sync: {
-    parameters: ["pointer", "buffer"], // pty_ptr, result_usize_ptr
-    result: "i8", // Status code (0: data, 99: end, -1: error)
-  },
   // Input: Pty Pointer, Data CString pointer. Output: Error CString pointer
   pty_write: {
     parameters: ["pointer", "buffer", "buffer"], // pty_ptr, data_cstr_ptr, error_usize_ptr

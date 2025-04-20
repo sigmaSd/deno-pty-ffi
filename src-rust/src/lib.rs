@@ -88,10 +88,6 @@ impl PtyReader {
 
         Ok(Message::Data(combined_data))
     }
-
-    fn read_sync(&self) -> Result<Message> {
-        Ok(self.rx_read.recv()?)
-    }
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -216,10 +212,6 @@ impl Pty {
         self.reader.read()
     }
 
-    fn read_sync(&self) -> Result<Message> {
-        self.reader.read_sync()
-    }
-
     fn write(&self, data: String) -> Result<()> {
         // Sending might fail if the writing thread panicked/exited
         self.tx_write.send(data).map_err(|e| e.into())
@@ -314,48 +306,6 @@ pub unsafe extern "C" fn pty_read(pty_ptr: *mut Pty, result_ptr: *mut usize) -> 
             99 // Process exited
         }
         Err(err) => {
-            unsafe { *result_ptr = boxed_error_to_cstring(err).into_raw() as _ };
-            -1 // Error
-        }
-    }
-}
-
-/// Reads output from the Pty, blocking until data is available or the process exits.
-///
-/// # Safety
-/// - `pty_ptr` must be a valid pointer obtained from `pty_create`.
-/// - `result_ptr` must point to a valid `usize` where the result pointer will be written.
-///
-/// # Returns
-/// - `0`: Success, data read. `result_ptr` holds a pointer to a null-terminated C string (UTF-8)
-///   containing the data. This string must be freed by the caller using `free_string`.
-/// - `99`: Process exited normally. `result_ptr` is not modified or set to null.
-/// - `-1`: Error occurred (e.g., read error, channel closed unexpectedly). `result_ptr` holds a pointer
-///   to a null-terminated C string containing the error message. This string must be freed by the caller using `free_string`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn pty_read_sync(pty_ptr: *mut Pty, result_ptr: *mut usize) -> i8 {
-    let pty = unsafe { &*pty_ptr };
-    match pty.read_sync() {
-        // Uses the blocking read method
-        Ok(Message::Data(data)) => {
-            match CString::new(data) {
-                // Handles potential null bytes
-                Ok(c_string) => {
-                    unsafe { *result_ptr = c_string.into_raw() as _ };
-                    0 // Success with data
-                }
-                Err(e) => {
-                    let err_str = format!("Failed to create CString from read_sync data: {}", e);
-                    unsafe { *result_ptr = CString::new(err_str).unwrap().into_raw() as _ };
-                    -1 // Error
-                }
-            }
-        }
-        Ok(Message::End) => {
-            99 // Process exited
-        }
-        Err(err) => {
-            // This could be RecvError if the channel closed prematurely, or other errors
             unsafe { *result_ptr = boxed_error_to_cstring(err).into_raw() as _ };
             -1 // Error
         }
