@@ -296,7 +296,7 @@ pub unsafe extern "C" fn pty_read(pty_ptr: *mut Pty, result_ptr: *mut usize) -> 
                 Err(e) => {
                     // Data contained null bytes, shouldn't happen with valid UTF-8 read often, but handle it.
                     let err_str = format!("Failed to create CString from read data: {}", e);
-                    unsafe { *result_ptr = CString::new(err_str).unwrap().into_raw() as _ };
+                    unsafe { *result_ptr = boxed_error_to_cstring(err_str.into()).into_raw() as _ };
                     -1 // Error
                 }
             }
