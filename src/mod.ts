@@ -15,26 +15,50 @@ import {
 const LIBRARY = await instantiate();
 
 // --- Result type for read operations ---
+/**
+ * Represents the result of a read operation from the PTY.
+ * It's a discriminated union based on the `done` property.
+ */
 export type PtyReadResult = {
+  /** The data read from the PTY as a string. */
   data: string;
+  /** Indicates that data was successfully read and the process is still running. */
   done: false;
 } | {
+  /** Indicates that the PTY process has exited and no more data will be available. */
   done: true;
+  /** Undefined when the process is done. */
   data: undefined; // Or null, for consistency
 };
 
+/**
+ * Represents a Pseudo-Terminal (PTY) managed via a Rust FFI backend.
+ * Provides methods for interacting with the PTY, such as reading output,
+ * writing input, resizing, and closing.
+ */
 export class Pty {
-  #ptr: Deno.PointerValue; // The opaque pointer to the Rust Pty struct
+  /** @internal The opaque pointer to the underlying Rust Pty struct. Null if closed. */
+  #ptr: Deno.PointerValue | null;
 
+  /**
+   * Creates a new Pty instance and spawns the specified command within it.
+   * This involves communicating with the Rust FFI layer to create the underlying
+   * pseudoterminal and start the child process.
+   *
+   * @param command - The command configuration, including the program path and any arguments.
+   * @throws {Error} If the FFI call to create the PTY fails.
+   * @throws {Error} If the FFI call succeeds but returns an invalid pointer.
+   */
   constructor(command: Command) {
-    // 1. Encode command using pointer + length
+    // 1. Encode command using pointer + length (bincode serialization)
     const cmdData = encodePointerLenData(command);
-    const cmdDataPtr = Deno.UnsafePointer.of(cmdData); // Get pointer TO the TS buffer
+    const cmdDataPtr = Deno.UnsafePointer.of(cmdData); // Get pointer TO the TS buffer containing serialized data
 
     // 2. Prepare result buffer (for the Pty pointer or error CString pointer)
+    // Rust will write the resulting pointer (either *mut Pty or *mut c_char for error) here.
     const resultPtrBuf = new BigUint64Array(1);
 
-    // 3. Call FFI function
+    // 3. Call FFI function: pty_create(cmd_ptr, cmd_len, result_ptr_buf) -> status
     const status = LIBRARY.symbols.pty_create(
       cmdDataPtr,
       BigInt(cmdData.length),
@@ -43,125 +67,179 @@ export class Pty {
 
     // 4. Handle result
     if (status === -1) {
-      // Error occurred, resultPtrBuf contains error CString pointer
+      // Error occurred, resultPtrBuf now contains pointer to error CString allocated by Rust
       const errorMsg = readErrorAndFree(LIBRARY, resultPtrBuf);
       throw new Error(`Pty creation failed: ${errorMsg}`);
     }
 
-    // Success, resultPtrBuf contains the Pty pointer
+    // Success (status == 0), resultPtrBuf contains the opaque pointer to the Rust Pty struct
     const ptyPtr = readPointerFromResultBuffer(resultPtrBuf);
     if (!ptyPtr) {
-      // Should not happen if status is 0, but check defensively
+      // This should ideally not happen if status is 0, but robust code checks.
+      // It might indicate an internal logic error in the Rust FFI layer.
       throw new Error("Pty creation succeeded but returned a null pointer.");
     }
     this.#ptr = ptyPtr;
   }
 
   /**
-   * Reads pending output from the PTY (non-blocking).
-   * Returns an empty string if no new data is available.
-   * Returns { done: true } if the process has exited.
+   * Reads pending output from the PTY's pseudoterminal master file descriptor.
+   * This operation is non-blocking. If no data is immediately available, it returns
+   * an empty string result ({ data: "", done: false }).
+   * If the child process associated with the PTY has exited, it returns a result
+   * indicating completion ({ done: true, data: undefined }).
+   *
+   * @returns {PtyReadResult} An object containing the data read (as a string)
+   *                         or an indication that the process has finished.
+   * @throws {Error} If the Pty has already been closed (`close()` was called).
+   * @throws {Error} If the underlying FFI call to `pty_read` fails and returns an error message.
+   * @throws {Error} If the FFI call returns an unexpected status code.
    */
   read(): PtyReadResult {
     if (!this.#ptr) throw new Error("Pty is closed.");
 
+    // Prepare buffer for Rust to write the result pointer (data CString* or error CString*)
     const resultPtrBuf = new BigUint64Array(1);
+    // Call FFI: pty_read(pty_ptr, result_ptr_buf) -> status
     const status = LIBRARY.symbols.pty_read(this.#ptr, resultPtrBuf);
 
     switch (status) {
-      case 0: { // Success, data available
+      case 0: { // Success, data available (or empty string)
         const dataPtr = readPointerFromResultBuffer(resultPtrBuf);
         if (!dataPtr) {
-          // This might mean an empty string was read "" which CString::new("") handles.
-          // If Rust guarantees non-null ptr for status 0, this is an internal error.
+          // Rust's CString::new("") results in a valid, non-null pointer to a zero-byte string.
+          // A null pointer here *after* status 0 might indicate an FFI inconsistency or error.
+          // However, returning an empty string might be the safest fallback.
           console.warn("pty_read returned status 0 but a null data pointer.");
           return { data: "", done: false };
         }
         try {
+          // Decode the CString pointer received from Rust
           const data = decodeCString(dataPtr);
           return { data, done: false };
         } finally {
-          freeRustString(LIBRARY, dataPtr); // Free the CString memory
+          // Free the CString memory allocated by Rust
+          freeRustString(LIBRARY, dataPtr);
         }
       }
-      case 99: // Process finished
+      case 99: // Special status code indicating the process has finished
         return { done: true, data: undefined };
-      case -1: { // Error
+      case -1: { // Error occurred
+        // resultPtrBuf contains the error CString pointer
         const errorMsg = readErrorAndFree(LIBRARY, resultPtrBuf);
         throw new Error(`Pty read failed: ${errorMsg}`);
       }
       default:
+        // Should not happen with the current Rust implementation
         throw new Error(`Pty read returned unexpected status: ${status}`);
     }
   }
 
   /**
-   * Reads output from the PTY, blocking until data is available or the process exits.
-   * Returns { done: true } if the process has exited.
+   * Reads output from the PTY's pseudoterminal master file descriptor, blocking
+   * until data becomes available or the child process exits.
+   * If the child process associated with the PTY has exited, it returns a result
+   * indicating completion ({ done: true, data: undefined }).
+   *
+   * @returns {PtyReadResult} An object containing the data read (as a string)
+   *                         or an indication that the process has finished.
+   * @throws {Error} If the Pty has already been closed (`close()` was called).
+   * @throws {Error} If the underlying FFI call to `pty_read_sync` fails and returns an error message.
+   * @throws {Error} If the FFI call returns an unexpected status code.
    */
   readSync(): PtyReadResult {
     if (!this.#ptr) throw new Error("Pty is closed.");
 
+    // Prepare buffer for Rust to write the result pointer (data CString* or error CString*)
     const resultPtrBuf = new BigUint64Array(1);
+    // Call FFI: pty_read_sync(pty_ptr, result_ptr_buf) -> status
     const status = LIBRARY.symbols.pty_read_sync(this.#ptr, resultPtrBuf);
 
     switch (status) {
-      case 0: { // Success, data available
+      case 0: { // Success, data available (blocking ensures *some* data or EOF)
         const dataPtr = readPointerFromResultBuffer(resultPtrBuf);
         if (!dataPtr) {
+          // Similar to non-blocking read, a null pointer after status 0 is unexpected.
           console.warn(
             "pty_read_sync returned status 0 but a null data pointer.",
           );
+          // It's unclear if this path should yield "" or throw. Returning "" seems less disruptive.
           return { data: "", done: false };
         }
         try {
+          // Decode the CString pointer received from Rust
           const data = decodeCString(dataPtr);
           return { data, done: false };
         } finally {
-          freeRustString(LIBRARY, dataPtr); // Free the CString memory
+          // Free the CString memory allocated by Rust
+          freeRustString(LIBRARY, dataPtr);
         }
       }
-      case 99: // Process finished
+      case 99: // Special status code indicating the process has finished
         return { done: true, data: undefined };
-      case -1: { // Error
+      case -1: { // Error occurred
+        // resultPtrBuf contains the error CString pointer
         const errorMsg = readErrorAndFree(LIBRARY, resultPtrBuf);
         throw new Error(`Pty readSync failed: ${errorMsg}`);
       }
       default:
+        // Should not happen with the current Rust implementation
         throw new Error(`Pty readSync returned unexpected status: ${status}`);
     }
   }
 
-  /** Writes data to the PTY's input. */
+  /**
+   * Writes the given data (as a string) to the PTY's input (master file descriptor).
+   * This data is typically forwarded to the standard input of the child process.
+   * The string is encoded as a null-terminated C string before being passed to the FFI.
+   *
+   * @param data - The string data to write to the PTY.
+   * @throws {Error} If the Pty has already been closed (`close()` was called).
+   * @throws {Error} If the underlying FFI call to `pty_write` fails and returns an error message.
+   */
   write(data: string): void {
     if (!this.#ptr) throw new Error("Pty is closed.");
 
-    // Encode data as CString (null-terminated) for pty_write
+    // Encode data as CString (null-terminated UTF-8 byte array)
     const dataCStr = encodeCString(data);
 
+    // Prepare buffer for Rust to potentially write an error CString pointer
     const errorPtrBuf = new BigUint64Array(1);
 
+    // Call FFI: pty_write(pty_ptr, data_cstr_ptr, error_ptr_buf) -> status
     const status = LIBRARY.symbols.pty_write(
       this.#ptr,
-      dataCStr,
+      dataCStr, // Pass pointer to the null-terminated CString data
       errorPtrBuf,
     );
 
     if (status === -1) {
+      // Error occurred, errorPtrBuf contains the error CString pointer
       const errorMsg = readErrorAndFree(LIBRARY, errorPtrBuf);
       throw new Error(`Pty write failed: ${errorMsg}`);
     }
-    // Success, nothing to return
+    // Success (status == 0), nothing to return or clean up on the TS side
   }
 
-  /** Gets the current PTY terminal size. */
+  /**
+   * Retrieves the current size (rows and columns) of the PTY terminal.
+   * This involves an FFI call that returns the size information serialized
+   * into a raw byte buffer (pointer + length).
+   *
+   * @returns {PtySize} An object containing the number of rows and columns.
+   * @throws {Error} If the Pty has already been closed (`close()` was called).
+   * @throws {Error} If the underlying FFI call to `pty_get_size` fails and returns an error message.
+   * @throws {Error} If the FFI call succeeds but returns an invalid data pointer.
+   */
   getSize(): PtySize {
     if (!this.#ptr) throw new Error("Pty is closed.");
 
-    const resultDataPtrBuf = new BigUint64Array(1); // For *mut u8
-    const resultLenBuf = new BigUint64Array(1); // For usize
-    const errorPtrBuf = new BigUint64Array(1); // For error CString *
+    // Prepare buffers for Rust to write results:
+    const resultDataPtrBuf = new BigUint64Array(1); // For *mut u8 (pointer to serialized PtySize)
+    const resultLenBuf = new BigUint64Array(1); // For usize (length of serialized data)
+    const errorPtrBuf = new BigUint64Array(1); // For *mut c_char (error CString pointer)
 
+    // Call FFI: pty_get_size(pty_ptr, result_data_ptr_buf, result_len_buf, error_ptr_buf) -> status
     const status = LIBRARY.symbols.pty_get_size(
       this.#ptr,
       resultDataPtrBuf,
@@ -170,20 +248,22 @@ export class Pty {
     );
 
     if (status === -1) {
+      // Error occurred, errorPtrBuf contains the error CString pointer
       const errorMsg = readErrorAndFree(LIBRARY, errorPtrBuf);
       throw new Error(`Pty getSize failed: ${errorMsg}`);
     }
 
-    // Success, read pointer and length
+    // Success (status == 0), read pointer and length of the serialized data
     const dataPtr = readPointerFromResultBuffer(resultDataPtrBuf);
-    const len = Number(resultLenBuf[0]); // usize fits in JS number
+    const len = Number(resultLenBuf[0]); // usize fits safely in JS number for typical lengths
 
     if (!dataPtr) {
-      // Should not happen on success, maybe means empty size data?
+      // Should not happen on success according to the Rust contract, but check defensively.
       throw new Error("Pty getSize succeeded but returned null data pointer.");
     }
 
     try {
+      // Decode the raw byte data (allocated by Rust) into a PtySize object
       const size = decodePointerLenData<PtySize>(dataPtr, len);
       return size;
     } finally {
@@ -192,16 +272,27 @@ export class Pty {
     }
   }
 
-  /** Resizes the PTY terminal. */
+  /**
+   * Resizes the PTY terminal to the specified dimensions (rows and columns).
+   * This typically sends a `SIGWINCH` signal to the foreground process group
+   * in the PTY session on Unix-like systems. The size information is serialized
+   * and passed to the FFI layer.
+   *
+   * @param size - An object containing the desired number of rows and columns.
+   * @throws {Error} If the Pty has already been closed (`close()` was called).
+   * @throws {Error} If the underlying FFI call to `pty_resize` fails and returns an error message.
+   */
   resize(size: PtySize): void {
     if (!this.#ptr) throw new Error("Pty is closed.");
 
-    // Encode size using pointer + length
+    // Encode size object into raw bytes using pointer + length (bincode serialization)
     const sizeData = encodePointerLenData(size);
-    const sizeDataPtr = Deno.UnsafePointer.of(sizeData);
+    const sizeDataPtr = Deno.UnsafePointer.of(sizeData); // Get pointer TO the TS buffer
 
+    // Prepare buffer for Rust to potentially write an error CString pointer
     const errorPtrBuf = new BigUint64Array(1);
 
+    // Call FFI: pty_resize(pty_ptr, size_data_ptr, size_data_len, error_ptr_buf) -> status
     const status = LIBRARY.symbols.pty_resize(
       this.#ptr,
       sizeDataPtr,
@@ -210,26 +301,44 @@ export class Pty {
     );
 
     if (status === -1) {
+      // Error occurred, errorPtrBuf contains the error CString pointer
       const errorMsg = readErrorAndFree(LIBRARY, errorPtrBuf);
       throw new Error(`Pty resize failed: ${errorMsg}`);
     }
-    // Success
+    // Success (status == 0)
   }
 
   /**
-   * Closes the PTY, drops the Rust object, and attempts to kill the child process.
-   * The Pty object should not be used after calling this.
+   * Closes the PTY master file descriptor and requests the Rust side to clean up
+   * resources associated with this PTY instance. This includes dropping the Rust `Pty`
+   * struct (which typically attempts to terminate the child process).
+   *
+   * After calling `close()`, the `Pty` object should be considered unusable, and
+   * further method calls will throw an error (due to `#ptr` being null). It's safe
+   * to call `close()` multiple times; subsequent calls after the first will have no effect.
+   *
+   * Note: This does *not* close the global FFI library instance (`LIBRARY`).
+   * The library remains loaded until the Deno process exits.
    */
   close(): void {
     if (this.#ptr) {
       try {
+        // Call the FFI function to drop the Pty struct on the Rust side
+        // pty_close(pty_ptr) -> void (no return value, errors are exceptional)
         LIBRARY.symbols.pty_close(this.#ptr);
       } catch (e) {
-        // Log error during close but don't prevent library closing
+        // Log error during close but still proceed to mark as closed locally.
+        // An error here might mean the Rust side panicked during drop, but we
+        // should still prevent further use from the TS side.
         console.error("Error during pty_close FFI call:", e);
+      } finally {
+        // Crucially, mark the pointer as null *after* the FFI call attempt.
+        // This prevents use-after-close even if the FFI call itself threw an error.
+        this.#ptr = null;
       }
-      this.#ptr = null; // Mark as unusable
-      // LIBRARY.close(); // The library will be cleaned at exit, don't call this when the program is still running
+      // DO NOT close the global LIBRARY here. It should persist for the application lifetime.
+      // LIBRARY.close(); // Incorrect: Closes the library for all potential Pty instances.
     }
+    // If this.#ptr is already null, do nothing (idempotent close).
   }
 }

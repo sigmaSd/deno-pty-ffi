@@ -2,7 +2,7 @@ name: ci
 
 on:
   push:
-    branches: ["master","dev"]
+    branches: ["master", "dev", "new"]
   pull_request:
     branches: ["master"]
 
@@ -11,27 +11,33 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: [
+            ubuntu-latest, # x86_64
+            ubuntu-24.04-arm, # arm
+            macos-13, # x86_64
+            macos-latest, # arm
+            windows-latest, # x86_64
+          ]
 
     steps:
-    - name: Checkout Repo
-      uses: actions/checkout@v4
+      - name: Checkout Repo
+        uses: actions/checkout@v4
 
-    - name: Intall Deno
-      uses: denoland/setup-deno@v2
+      - name: Intall Deno
+        uses: denoland/setup-deno@v2
 
-    - if: runner.os == 'Linux'
-      name: Run docs lint
-      run: deno doc --lint mod.ts
-    - if: runner.os == 'Linux'
-      name: Run tests Linux
-      run: export CARGO_TARGET_DIR=target && export RUST_LIB_PATH=$CARGO_TARGET_DIR/debug && deno task build && deno task test:rust && mv $CARGO_TARGET_DIR/debug/libpty.so $CARGO_TARGET_DIR/debug/libpty_$(uname -m).so && deno test -A
+      - if: runner.os == 'Linux'
+        name: Run docs lint
+        run: deno doc --lint mod.ts
+      - if: runner.os == 'Linux'
+        name: Run tests Linux
+        run: export CARGO_TARGET_DIR=target && export RUST_LIB_PATH=$CARGO_TARGET_DIR/debug && deno task build && deno task test:rust && mv $CARGO_TARGET_DIR/debug/libpty.so $CARGO_TARGET_DIR/debug/libpty_$(uname -m).so && deno test -A
 
-    # NOTE: make macos testing easier for users
-    - if: runner.os == 'macOS'
-      name: Run tests MacOs
-      run: export CARGO_TARGET_DIR=target && export RUST_LIB_PATH=$CARGO_TARGET_DIR/debug && deno task build && deno task test:rust && mv $CARGO_TARGET_DIR/debug/libpty.dylib $CARGO_TARGET_DIR/debug/libpty_$(uname -m).dylib && deno test -A
+      # NOTE: make macos testing easier for users
+      - if: runner.os == 'macOS'
+        name: Run tests MacOs
+        run: export CARGO_TARGET_DIR=target && export RUST_LIB_PATH=$CARGO_TARGET_DIR/debug && deno task build && deno task test:rust && mv $CARGO_TARGET_DIR/debug/libpty.dylib $CARGO_TARGET_DIR/debug/libpty_$(uname -m).dylib && deno test -A
 
-    - if: runner.os == 'Windows'
-      name: Run tests Windows
-      run: $env:CARGO_TARGET_DIR='target'; deno task test
+      - if: runner.os == 'Windows'
+        name: Run tests Windows
+        run: $env:CARGO_TARGET_DIR='target'; deno task test

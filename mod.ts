@@ -27,5 +27,5 @@ while (true) {
 
 @module
 */
-export { Pty } from "./src/mod.ts";
+export { Pty, type PtyReadResult } from "./src/mod.ts";
 export type { Command, PtySize } from "./src/ffi.ts";
