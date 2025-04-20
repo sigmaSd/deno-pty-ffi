@@ -74,6 +74,10 @@ impl PtyReader {
 
         Ok(Message::Data(msg))
     }
+
+    fn read_sync(&self) -> Result<Message> {
+        Ok(self.rx_read.recv()?)
+    }
 }
 
 #[derive(Serialize, Deserialize)]
@@ -184,6 +188,10 @@ impl Pty {
         self.reader.read()
     }
 
+    fn read_sync(&self) -> Result<Message> {
+        self.reader.read_sync()
+    }
+
     fn write(&self, data: String) -> Result<()> {
         Ok(self.tx_write.send(data)?)
     }
@@ -243,6 +251,42 @@ pub unsafe extern "C" fn pty_read(this: *mut Pty, result: *mut usize) -> i8 {
         let this = unsafe { &*this };
         // TODO: add a test for null byte inside str from read
         let msg = this.read()?;
+        match msg {
+            Message::Data(data) => Ok(R::Data(CString::new(data.replace('\0', ""))?)),
+            Message::End => Ok(R::End),
+        }
+    })() {
+        Ok(data) => match data {
+            R::Data(str) => {
+                *result = str.into_raw() as _;
+                0
+            }
+            R::End => 99,
+        },
+        Err(err) => {
+            *result = boxed_error_to_cstring(err).into_raw() as _;
+            -1
+        }
+    }
+}
+
+/// # Safety
+/// - Requires a valid pointer to a Pty
+/// - Requires a valid pointer to a buffer of size 8
+/// to write the result to
+///
+/// Returns -1 on error
+/// Returns 99 on process exit
+#[no_mangle]
+pub unsafe extern "C" fn pty_read_sync(this: *mut Pty, result: *mut usize) -> i8 {
+    enum R {
+        Data(CString),
+        End,
+    }
+    match (|| -> Result<R> {
+        let this = unsafe { &*this };
+        // TODO: add a test for null byte inside str from read
+        let msg = this.read_sync()?;
         match msg {
             Message::Data(data) => Ok(R::Data(CString::new(data.replace('\0', ""))?)),
             Message::End => Ok(R::End),

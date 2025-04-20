@@ -35,12 +35,32 @@ export class Pty {
 
   /**
    * Reads data from the pty.
+   * This returns immediatly with data.
    * @returns The data read from the pty.
    */
   read(): { data: string; done: boolean } {
+    return this.#readInner((dataBuf) =>
+      LIBRARY.symbols.pty_read(this.#this, dataBuf)
+    );
+  }
+
+  /**
+   * Reads data from the pty.
+   * This blocks until data is read from the Pty.
+   * @returns The data read from the pty.
+   */
+  readSync(): { data: string; done: boolean } {
+    return this.#readInner((dataBuf) =>
+      LIBRARY.symbols.pty_read_sync(this.#this, dataBuf)
+    );
+  }
+
+  #readInner(
+    fn: (dataBuf: Uint8Array) => number,
+  ): { data: string; done: boolean } {
     if (this.#processExited) return { data: "", done: true };
     const dataBuf = new Uint8Array(8);
-    const result = LIBRARY.symbols.pty_read(this.#this, dataBuf);
+    const result = fn(dataBuf);
 
     if (result === 99) {
       /* Process exited */

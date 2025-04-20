@@ -34,6 +34,10 @@ const SYMBOLS = {
     parameters: ["pointer", "buffer"],
     result: "i8",
   },
+  pty_read_sync: {
+    parameters: ["pointer", "buffer"],
+    result: "i8",
+  },
   pty_write: {
     parameters: ["pointer", "buffer", "buffer"],
     result: "i8",
