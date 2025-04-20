@@ -1,130 +1,235 @@
 import { type Command, instantiate, type PtySize } from "./ffi.ts";
 import {
-  createPtrFromBuffer,
-  decodeCstring,
-  decodeJsonCstring,
-  encodeCstring,
-  encodeJsonCstring,
+  decodeCString,
+  decodePointerLenData,
+  encodeCString,
+  encodePointerLenData,
+  freeRustData,
+  freeRustString,
+  readErrorAndFree, // Use the combined read+free for errors
+  readPointerFromResultBuffer,
 } from "./utils.ts";
 
 // NOTE: consier exporting this, so the user decides when to instantiate
 // NOTE(2): The Libary should remain alive as long as the program is running
 const LIBRARY = await instantiate();
 
-/**
- * A class representing a Pty.
- */
+// --- Result type for read operations ---
+export type PtyReadResult = {
+  data: string;
+  done: false;
+} | {
+  done: true;
+  data: undefined; // Or null, for consistency
+};
+
 export class Pty {
-  #this;
-  #processExited = false;
+  #ptr: Deno.PointerValue; // The opaque pointer to the Rust Pty struct
 
-  /**
-   * Creates a new Pty instance with the specified command.
-   * @param command - The command to be executed in the pty.
-   */
   constructor(command: Command) {
-    const pty_buf = new Uint8Array(8);
-    const result = LIBRARY.symbols.pty_create(
-      encodeJsonCstring(command),
-      pty_buf,
+    // 1. Encode command using pointer + length
+    const cmdData = encodePointerLenData(command);
+    const cmdDataPtr = Deno.UnsafePointer.of(cmdData); // Get pointer TO the TS buffer
+
+    // 2. Prepare result buffer (for the Pty pointer or error CString pointer)
+    const resultPtrBuf = new BigUint64Array(1);
+
+    // 3. Call FFI function
+    const status = LIBRARY.symbols.pty_create(
+      cmdDataPtr,
+      BigInt(cmdData.length),
+      resultPtrBuf, // Pass buffer for Rust to write result pointer into
     );
-    const ptr = createPtrFromBuffer(pty_buf);
-    if (result === -1) throw new Error(decodeCstring(ptr));
-    this.#this = ptr;
-  }
 
-  /**
-   * Reads data from the pty.
-   * This returns immediatly with data.
-   * @returns The data read from the pty.
-   */
-  read(): { data: string; done: boolean } {
-    return this.#readInner((dataBuf) =>
-      LIBRARY.symbols.pty_read(this.#this, dataBuf)
-    );
-  }
-
-  /**
-   * Reads data from the pty.
-   * This blocks until data is read from the Pty.
-   * @returns The data read from the pty.
-   */
-  readSync(): { data: string; done: boolean } {
-    return this.#readInner((dataBuf) =>
-      LIBRARY.symbols.pty_read_sync(this.#this, dataBuf)
-    );
-  }
-
-  #readInner(
-    fn: (dataBuf: Uint8Array) => number,
-  ): { data: string; done: boolean } {
-    if (this.#processExited) return { data: "", done: true };
-    const dataBuf = new Uint8Array(8);
-    const result = fn(dataBuf);
-
-    if (result === 99) {
-      /* Process exited */
-      this.#processExited = true;
-      return { data: "", done: true };
+    // 4. Handle result
+    if (status === -1) {
+      // Error occurred, resultPtrBuf contains error CString pointer
+      const errorMsg = readErrorAndFree(LIBRARY, resultPtrBuf);
+      throw new Error(`Pty creation failed: ${errorMsg}`);
     }
-    const ptr = createPtrFromBuffer(dataBuf);
 
-    if (result === -1) throw new Error(decodeCstring(ptr));
-    return { data: decodeCstring(ptr), done: false };
+    // Success, resultPtrBuf contains the Pty pointer
+    const ptyPtr = readPointerFromResultBuffer(resultPtrBuf);
+    if (!ptyPtr) {
+      // Should not happen if status is 0, but check defensively
+      throw new Error("Pty creation succeeded but returned a null pointer.");
+    }
+    this.#ptr = ptyPtr;
   }
 
   /**
-   * Writes data to the pty.
-   * @param data - The data to write to the pty.
+   * Reads pending output from the PTY (non-blocking).
+   * Returns an empty string if no new data is available.
+   * Returns { done: true } if the process has exited.
    */
+  read(): PtyReadResult {
+    if (!this.#ptr) throw new Error("Pty is closed.");
+
+    const resultPtrBuf = new BigUint64Array(1);
+    const status = LIBRARY.symbols.pty_read(this.#ptr, resultPtrBuf);
+
+    switch (status) {
+      case 0: { // Success, data available
+        const dataPtr = readPointerFromResultBuffer(resultPtrBuf);
+        if (!dataPtr) {
+          // This might mean an empty string was read "" which CString::new("") handles.
+          // If Rust guarantees non-null ptr for status 0, this is an internal error.
+          console.warn("pty_read returned status 0 but a null data pointer.");
+          return { data: "", done: false };
+        }
+        try {
+          const data = decodeCString(dataPtr);
+          return { data, done: false };
+        } finally {
+          freeRustString(LIBRARY, dataPtr); // Free the CString memory
+        }
+      }
+      case 99: // Process finished
+        return { done: true, data: undefined };
+      case -1: { // Error
+        const errorMsg = readErrorAndFree(LIBRARY, resultPtrBuf);
+        throw new Error(`Pty read failed: ${errorMsg}`);
+      }
+      default:
+        throw new Error(`Pty read returned unexpected status: ${status}`);
+    }
+  }
+
+  /**
+   * Reads output from the PTY, blocking until data is available or the process exits.
+   * Returns { done: true } if the process has exited.
+   */
+  readSync(): PtyReadResult {
+    if (!this.#ptr) throw new Error("Pty is closed.");
+
+    const resultPtrBuf = new BigUint64Array(1);
+    const status = LIBRARY.symbols.pty_read_sync(this.#ptr, resultPtrBuf);
+
+    switch (status) {
+      case 0: { // Success, data available
+        const dataPtr = readPointerFromResultBuffer(resultPtrBuf);
+        if (!dataPtr) {
+          console.warn(
+            "pty_read_sync returned status 0 but a null data pointer.",
+          );
+          return { data: "", done: false };
+        }
+        try {
+          const data = decodeCString(dataPtr);
+          return { data, done: false };
+        } finally {
+          freeRustString(LIBRARY, dataPtr); // Free the CString memory
+        }
+      }
+      case 99: // Process finished
+        return { done: true, data: undefined };
+      case -1: { // Error
+        const errorMsg = readErrorAndFree(LIBRARY, resultPtrBuf);
+        throw new Error(`Pty readSync failed: ${errorMsg}`);
+      }
+      default:
+        throw new Error(`Pty readSync returned unexpected status: ${status}`);
+    }
+  }
+
+  /** Writes data to the PTY's input. */
   write(data: string): void {
-    // NOTE: maybe we should tell the user that the process exited
-    if (this.#processExited) return;
-    const errBuf = new Uint8Array(8);
-    const result = LIBRARY.symbols.pty_write(
-      this.#this,
-      encodeCstring(data),
-      errBuf,
+    if (!this.#ptr) throw new Error("Pty is closed.");
+
+    // Encode data as CString (null-terminated) for pty_write
+    const dataCStr = encodeCString(data);
+
+    const errorPtrBuf = new BigUint64Array(1);
+
+    const status = LIBRARY.symbols.pty_write(
+      this.#ptr,
+      dataCStr,
+      errorPtrBuf,
     );
-    if (result === -1) {
-      throw new Error(decodeCstring(createPtrFromBuffer(errBuf)));
+
+    if (status === -1) {
+      const errorMsg = readErrorAndFree(LIBRARY, errorPtrBuf);
+      throw new Error(`Pty write failed: ${errorMsg}`);
     }
+    // Success, nothing to return
   }
 
-  /**
-   * Gets the size of the pty.
-   * @returns The size of the pty.
-   */
+  /** Gets the current PTY terminal size. */
   getSize(): PtySize {
-    const dataBuf = new Uint8Array(8);
-    const result = LIBRARY.symbols.pty_get_size(this.#this, dataBuf);
-    const ptr = createPtrFromBuffer(dataBuf);
-    if (result === -1) throw new Error(decodeCstring(ptr));
-    return decodeJsonCstring(ptr);
-  }
+    if (!this.#ptr) throw new Error("Pty is closed.");
 
-  /**
-   * Resizes the pty to the specified size.
-   * @param size - The new size for the pty.
-   */
-  resize(size: PtySize): void {
-    const errBuf = new Uint8Array(8);
-    const result = LIBRARY.symbols.pty_resize(
-      this.#this,
-      encodeJsonCstring(size),
-      errBuf,
+    const resultDataPtrBuf = new BigUint64Array(1); // For *mut u8
+    const resultLenBuf = new BigUint64Array(1); // For usize
+    const errorPtrBuf = new BigUint64Array(1); // For error CString *
+
+    const status = LIBRARY.symbols.pty_get_size(
+      this.#ptr,
+      resultDataPtrBuf,
+      resultLenBuf,
+      errorPtrBuf,
     );
-    if (result === -1) {
-      throw new Error(decodeCstring(createPtrFromBuffer(errBuf)));
+
+    if (status === -1) {
+      const errorMsg = readErrorAndFree(LIBRARY, errorPtrBuf);
+      throw new Error(`Pty getSize failed: ${errorMsg}`);
+    }
+
+    // Success, read pointer and length
+    const dataPtr = readPointerFromResultBuffer(resultDataPtrBuf);
+    const len = Number(resultLenBuf[0]); // usize fits in JS number
+
+    if (!dataPtr) {
+      // Should not happen on success, maybe means empty size data?
+      throw new Error("Pty getSize succeeded but returned null data pointer.");
+    }
+
+    try {
+      const size = decodePointerLenData<PtySize>(dataPtr, len);
+      return size;
+    } finally {
+      // Free the raw data buffer allocated by Rust
+      freeRustData(LIBRARY, dataPtr, len);
     }
   }
 
+  /** Resizes the PTY terminal. */
+  resize(size: PtySize): void {
+    if (!this.#ptr) throw new Error("Pty is closed.");
+
+    // Encode size using pointer + length
+    const sizeData = encodePointerLenData(size);
+    const sizeDataPtr = Deno.UnsafePointer.of(sizeData);
+
+    const errorPtrBuf = new BigUint64Array(1);
+
+    const status = LIBRARY.symbols.pty_resize(
+      this.#ptr,
+      sizeDataPtr,
+      BigInt(sizeData.length),
+      errorPtrBuf,
+    );
+
+    if (status === -1) {
+      const errorMsg = readErrorAndFree(LIBRARY, errorPtrBuf);
+      throw new Error(`Pty resize failed: ${errorMsg}`);
+    }
+    // Success
+  }
+
   /**
-    Close the Pty, the pty won't be usable after this call
-    NOTE: the process isn't killed in windows (https://github.com/sigmaSd/deno-pty-ffi/issues/4)
-  */
+   * Closes the PTY, drops the Rust object, and attempts to kill the child process.
+   * The Pty object should not be used after calling this.
+   */
   close(): void {
-    this.#processExited = true;
-    LIBRARY.symbols.pty_close(this.#this);
+    if (this.#ptr) {
+      try {
+        LIBRARY.symbols.pty_close(this.#ptr);
+      } catch (e) {
+        // Log error during close but don't prevent library closing
+        console.error("Error during pty_close FFI call:", e);
+      }
+      this.#ptr = null; // Mark as unusable
+      // LIBRARY.close(); // The library will be cleaned at exit, don't call this when the program is still running
+    }
   }
 }
