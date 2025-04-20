@@ -1,6 +1,23 @@
 import { assert, assertEquals } from "jsr:@std/assert@0.220.1";
 import { Pty } from "../mod.ts";
 
+async function write_and_expect(pty: Pty, toWrite: string, expect: string) {
+  pty.write(toWrite);
+
+  let success = false;
+  while (true) {
+    const { data, done } = pty.read();
+    if (done) break;
+    if (data?.includes(expect)) {
+      success = true;
+      break;
+    }
+    await new Promise((r) => setTimeout(r, 100));
+  }
+
+  assert(success);
+}
+
 Deno.test("smoke", async () => {
   const pty = new Pty({
     cmd: "deno",
@@ -68,19 +85,22 @@ Deno.test("with cwd set", async () => {
   pty.close();
 });
 
-async function write_and_expect(pty: Pty, toWrite: string, expect: string) {
-  pty.write(toWrite);
+Deno.test("multibytes chars work crrectly", async () => {
+  const pty = new Pty({
+    cmd: "echo",
+    args: ["日本語"],
+    env: [],
+  });
 
   let success = false;
   while (true) {
     const { data, done } = pty.read();
+    await new Promise((r) => setTimeout(r, 100));
     if (done) break;
-    if (data?.includes(expect)) {
+    if (data?.includes("日本語")) {
       success = true;
       break;
     }
-    await new Promise((r) => setTimeout(r, 100));
   }
-
   assert(success);
-}
+});
