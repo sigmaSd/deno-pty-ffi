@@ -17,18 +17,12 @@ const LIBRARY = await instantiate();
 // --- Result type for read operations ---
 /**
  * Represents the result of a read operation from the PTY.
- * It's a discriminated union based on the `done` property.
  */
 export type PtyReadResult = {
   /** The data read from the PTY as a string. */
   data: string;
   /** Indicates that data was successfully read and the process is still running. */
-  done: false;
-} | {
-  /** Indicates that the PTY process has exited and no more data will be available. */
-  done: true;
-  /** Undefined when the process is done. */
-  data: undefined; // Or null, for consistency
+  done: boolean;
 };
 
 /**
@@ -123,7 +117,7 @@ export class Pty {
         }
       }
       case 99: // Special status code indicating the process has finished
-        return { done: true, data: undefined };
+        return { done: true, data: "" };
       case -1: { // Error occurred
         // resultPtrBuf contains the error CString pointer
         const errorMsg = readErrorAndFree(LIBRARY, resultPtrBuf);
@@ -176,7 +170,7 @@ export class Pty {
         }
       }
       case 99: // Special status code indicating the process has finished
-        return { done: true, data: undefined };
+        return { done: true, data: "" };
       case -1: { // Error occurred
         // resultPtrBuf contains the error CString pointer
         const errorMsg = readErrorAndFree(LIBRARY, resultPtrBuf);
