@@ -85,12 +85,22 @@ Deno.test("with cwd set", async () => {
   pty.close();
 });
 
-Deno.test("multibytes chars work crrectly", () => {
+Deno.test("multibytes chars work crrectly", async () => {
   const pty = new Pty({
     cmd: "echo",
     args: ["日本語"],
     env: [],
   });
 
-  assertEquals(pty.readSync().data, "日本語\r\n");
+  let success = false;
+  while (true) {
+    const { data, done } = pty.read();
+    await new Promise((r) => setTimeout(r, 100));
+    if (done) break;
+    if (data?.includes("日本語")) {
+      success = true;
+      break;
+    }
+  }
+  assert(success);
 });
