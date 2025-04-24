@@ -3,10 +3,9 @@ import { Pty } from "./mod.ts";
 
 if (Deno.args.length === 0) throw new Error("no program provided");
 
-const pty = new Pty({
-  cmd: "deno",
+const pty = new Pty(Deno.execPath(), {
   args: ["run", ...Deno.args],
-  env: [["NO_COLOR", "1"]],
+  env: { NO_COLOR: "1" },
 });
 
 type Permission = "read" | "write" | "net" | "env";
@@ -31,10 +30,7 @@ Deno.addSignalListener("SIGINT", () => {
   Deno.exit();
 });
 
-while (true) {
-  const { data: line, done } = await pty.read();
-  if (done) break;
-
+for await (const line of pty.readableStream()) {
   if (line.includes("Granted") && line.includes("access")) {
     const line_split = line.split(/\s+/);
     const mark = line_split.indexOf("access");
@@ -54,7 +50,7 @@ while (true) {
   // wait a bit for read data
   await new Promise((r) => setTimeout(r, 100));
   if (line.includes("Allow?")) {
-    await pty.write("y\n");
+    pty.write("y\n");
   }
 }
 

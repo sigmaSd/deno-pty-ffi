@@ -2,15 +2,13 @@ import * as plug from "@denosaurs/plug";
 import metadata from "../deno.json" with { type: "json" };
 
 /**
- * Represents a command to be executed in the pty.
+ * Represents the options for creating a new pseudoterminal (pty) process.
  */
-export interface Command {
-  /** The command to be executed. */
-  cmd: string;
+export interface CommandOptions {
   /** The arguments for the command. */
-  args: string[];
+  args?: string[];
   /** The environment variables for the command. */
-  env: [string, string][];
+  env?: Record<string, string>;
   /** The working directory for the command. defaults to the current working directory. */
   cwd?: string;
 }
@@ -24,9 +22,9 @@ export interface PtySize {
   /** The number of columns of text. */
   cols: number;
   /** The width of a cell in pixels. Note that some systems may ignore this value. */
-  pixel_width: number;
+  pixel_width?: number;
   /** The height of a cell in pixels. Note that some systems may ignore this value. */
-  pixel_height: number;
+  pixel_height?: number;
 }
 
 const SYMBOLS = {

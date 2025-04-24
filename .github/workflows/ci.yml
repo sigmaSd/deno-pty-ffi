@@ -2,7 +2,7 @@ name: ci
 
 on:
   push:
-    branches: ["master", "dev", "new"]
+    branches: ["master", "dev", "rework"]
   pull_request:
     branches: ["master"]
 
