@@ -321,3 +321,40 @@ Deno.test("methods throw after close", () => {
 
   pty.close(); // Idempotent close is safe
 });
+
+Deno.test("default cwd is current dir", async () => {
+  // Determine the command and arguments based on the OS
+  const command = Deno.build.os === "windows" ? "cmd" : "pwd";
+  // On Windows, tell 'cmd' to execute 'cd' and then exit ('/c')
+  const args = Deno.build.os === "windows" ? ["/c", "cd"] : [];
+
+  const pty = new Pty(command, { args });
+
+  let totalData = "";
+  try {
+    for await (const data of pty.readable) {
+      totalData += data;
+    }
+  } finally {
+    // Ensure pty is closed even if the test fails
+    pty.close();
+  }
+
+  const actualOutput = totalData.trim(); // Trim whitespace/newlines
+  const expectedCwd = Deno.cwd();
+
+  // Compare case-insensitively for Windows paths.
+  if (Deno.build.os === "windows") {
+    assertStringIncludes(
+      actualOutput.toLowerCase(),
+      expectedCwd.toLowerCase(),
+      `Expected output "${actualOutput}" to include "${expectedCwd}" (case-insensitive)`,
+    );
+  } else {
+    assertStringIncludes(
+      actualOutput,
+      expectedCwd,
+      `Expected output "${actualOutput}" to include "${expectedCwd}"`,
+    );
+  }
+});

@@ -120,8 +120,9 @@ impl Pty {
         if let Some(args) = command.args {
             cmd_builder.args(&args);
         }
-        if let Some(cwd) = command.cwd {
-            cmd_builder.cwd(cwd);
+        match command.cwd {
+            Some(cwd) => cmd_builder.cwd(cwd),
+            None => cmd_builder.cwd(std::env::current_dir()?),
         }
         if let Some(map) = command.env {
             for (key, val) in map {
