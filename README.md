@@ -8,18 +8,12 @@ a simple interface
 ```ts
 import { Pty } from "jsr:@sigma/pty-ffi";
 
-const pty = new Pty({
-  cmd: "bash",
-  args: [],
-  env: [],
-});
+const pty = new Pty("bash");
 
 // executs ls -la repedetly and shows output
-while (true) {
+pty.setPollInterval(500);
+for await (const line of pty.readable) {
+  console.log(line);
   pty.write("ls -la\n");
-  const { data, done } = pty.read();
-  if (done) break;
-  console.log(data);
-  await new Promise((r) => setTimeout(r, 100));
 }
 ```

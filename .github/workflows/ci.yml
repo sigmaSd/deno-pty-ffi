@@ -2,7 +2,7 @@ name: ci
 
 on:
   push:
-    branches: ["master", "dev", "new"]
+    branches: ["master", "dev", "rework"]
   pull_request:
     branches: ["master"]
 
@@ -12,12 +12,12 @@ jobs:
     strategy:
       matrix:
         os: [
-            ubuntu-latest, # x86_64
-            ubuntu-24.04-arm, # arm
-            macos-13, # x86_64
-            macos-latest, # arm
-            windows-latest, # x86_64
-          ]
+          ubuntu-latest, # x86_64
+          ubuntu-24.04-arm, # arm
+          macos-13, # x86_64
+          macos-latest, # arm
+          windows-latest, # x86_64
+        ]
 
     steps:
       - name: Checkout Repo

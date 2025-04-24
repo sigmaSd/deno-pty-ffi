@@ -1,4 +1,4 @@
-import { type Command, instantiate, type PtySize } from "./ffi.ts";
+import { type CommandOptions, instantiate, type PtySize } from "./ffi.ts";
 import {
   decodeCString,
   decodePointerLenData,
@@ -28,24 +28,29 @@ export type PtyReadResult = {
 /**
  * Represents a Pseudo-Terminal (PTY) managed via a Rust FFI backend.
  * Provides methods for interacting with the PTY, such as reading output,
- * writing input, resizing, and closing.
+ * writing input, resizing, and closing. Also offers stream-based APIs
+ * for reading and writing.
  */
 export class Pty {
   /** @internal The opaque pointer to the underlying Rust Pty struct. Null if closed. */
   #ptr: Deno.PointerValue | null;
+  /** @internal Configurable polling interval for readableStream */
+  #pollingIntervalMs = 30;
 
   /**
    * Creates a new Pty instance and spawns the specified command within it.
    * This involves communicating with the Rust FFI layer to create the underlying
    * pseudoterminal and start the child process.
    *
-   * @param command - The command configuration, including the program path and any arguments.
+   * @param command - The program path
+   * @param options - The command configuration
    * @throws {Error} If the FFI call to create the PTY fails.
    * @throws {Error} If the FFI call succeeds but returns an invalid pointer.
    */
-  constructor(command: Command) {
+  constructor(command: string, options: CommandOptions = {}) {
     // 1. Encode command using pointer + length (bincode serialization)
-    const cmdData = encodePointerLenData(command);
+    const rustCommand = { cmd: command, ...options };
+    const cmdData = encodePointerLenData(rustCommand);
     const cmdDataPtr = Deno.UnsafePointer.of(cmdData); // Get pointer TO the TS buffer containing serialized data
 
     // 2. Prepare result buffer (for the Pty pointer or error CString pointer)
@@ -81,7 +86,9 @@ export class Pty {
    * This operation is non-blocking. If no data is immediately available, it returns
    * an empty string result ({ data: "", done: false }).
    * If the child process associated with the PTY has exited, it returns a result
-   * indicating completion ({ done: true, data: undefined }).
+   * indicating completion ({ done: true, data: "" }).
+   *
+   * Prefer using `readableStream()` for more ergonomic consumption of output.
    *
    * @returns {PtyReadResult} An object containing the data read (as a string)
    *                         or an indication that the process has finished.
@@ -133,6 +140,8 @@ export class Pty {
    * Writes the given data (as a string) to the PTY's input (master file descriptor).
    * This data is typically forwarded to the standard input of the child process.
    * The string is encoded as a null-terminated C string before being passed to the FFI.
+   *
+   * Prefer using `writableStream()` for potentially easier integration with other streams.
    *
    * @param data - The string data to write to the PTY.
    * @throws {Error} If the Pty has already been closed (`close()` was called).
@@ -225,6 +234,8 @@ export class Pty {
    */
   resize(size: PtySize): void {
     if (!this.#ptr) throw new Error("Pty is closed.");
+    size.pixel_height ??= 0;
+    size.pixel_width ??= 0;
 
     // Encode size object into raw bytes using pointer + length (bincode serialization)
     const sizeData = encodePointerLenData(size);
@@ -263,23 +274,183 @@ export class Pty {
    */
   close(): void {
     if (this.#ptr) {
+      const ptrToClose = this.#ptr; // Capture ptr before nulling
+      this.#ptr = null; // Mark as closed immediately to prevent race conditions
+
       try {
         // Call the FFI function to drop the Pty struct on the Rust side
         // pty_close(pty_ptr) -> void (no return value, errors are exceptional)
-        LIBRARY.symbols.pty_close(this.#ptr);
+        LIBRARY.symbols.pty_close(ptrToClose);
       } catch (e) {
-        // Log error during close but still proceed to mark as closed locally.
-        // An error here might mean the Rust side panicked during drop, but we
-        // should still prevent further use from the TS side.
+        // Log error during close but keep marked as closed locally.
+        // An error here might mean the Rust side panicked during drop.
         console.error("Error during pty_close FFI call:", e);
-      } finally {
-        // Crucially, mark the pointer as null *after* the FFI call attempt.
-        // This prevents use-after-close even if the FFI call itself threw an error.
-        this.#ptr = null;
+        // Even if close failed, #ptr is already null, preventing further use.
       }
       // DO NOT close the global LIBRARY here. It should persist for the application lifetime.
       // LIBRARY.close(); // Incorrect: Closes the library for all potential Pty instances.
     }
     // If this.#ptr is already null, do nothing (idempotent close).
+  }
+
+  /**
+   * Returns a `ReadableStream<string>` that yields data read from the PTY.
+   * The stream automatically handles polling the underlying PTY and closes
+   * when the PTY process exits or errors when a read error occurs.
+   *
+   * Note: It's recommended to consume the stream promptly to avoid excessive
+   * buffering within the stream controller.
+   *
+   * @returns {ReadableStream<string>} A readable stream of the PTY output.
+   * @throws {Error} If the Pty is already closed when the stream is created (the stream will error immediately).
+   */
+  get readable(): ReadableStream<string> {
+    if (!this.#ptr) {
+      // Return a stream that's already errored if pty is closed initially
+      return new ReadableStream({
+        start(controller) {
+          controller.error(new Error("Pty is closed."));
+        },
+      });
+    }
+
+    // Keep a reference to the Pty instance for the stream source
+    // deno-lint-ignore no-this-alias
+    const ptyInstance = this;
+    let pollTimerId: number | undefined = undefined;
+
+    function clearPollTimer() {
+      if (pollTimerId !== undefined) {
+        clearTimeout(pollTimerId);
+        pollTimerId = undefined;
+      }
+    }
+
+    return new ReadableStream<string>({
+      start(controller) {
+        // console.log("[PTY Stream] Starting polling..."); // Optional debug log
+        function poll() {
+          // Check if Pty is still valid *before* attempting read
+          // This prevents errors if close() is called concurrently.
+          if (!ptyInstance.#ptr) {
+            // console.log("[PTY Stream] Pty closed externally. Closing stream."); // Optional debug log
+            // If pty was closed externally, we might not get a 'done' signal.
+            // Close the stream gracefully in this case.
+            clearPollTimer();
+            try {
+              // Attempt to close, might already be closed if controller errored/closed.
+              controller.close();
+            } catch { /* Ignore if already closed/errored */ }
+            return;
+          }
+
+          try {
+            const result = ptyInstance.read(); // Call the low-level read
+            // console.log("[PTY Stream] Poll result:", result); // Optional debug log
+
+            if (result.done) {
+              // console.log("[PTY Stream] PTY process finished. Closing stream."); // Optional debug log
+              clearPollTimer();
+              controller.close(); // Signal end of stream
+            } else {
+              // Enqueue even empty strings if not done, consistency?
+              // No, only enqueue if there's actual data.
+              if (result.data.length > 0) {
+                controller.enqueue(result.data); // Push data to the stream consumer
+              }
+              // Schedule next poll: immediate if data, interval if empty
+              const nextPollDelay = result.data.length > 0
+                ? 0
+                : ptyInstance.#pollingIntervalMs;
+              pollTimerId = setTimeout(poll, nextPollDelay);
+            }
+          } catch (e) {
+            // Handle errors from ptyInstance.read() or if pty was closed between check and read
+            // console.error("[PTY Stream] Error during PTY read poll:", e); // Optional debug log
+            clearPollTimer();
+            controller.error(e); // Signal stream error
+          }
+        }
+        // Start the first poll immediately
+        pollTimerId = setTimeout(poll, 0);
+      },
+
+      cancel(_reason) {
+        // console.log("[PTY Stream] Stream cancelled:", reason); // Optional debug log
+        clearPollTimer();
+        // Note: Stream cancellation doesn't automatically close the Pty.
+        // The consumer should call pty.close() if they want to terminate
+        // the underlying process upon cancellation. Consider adding an option?
+      },
+    });
+  }
+
+  /**
+   * Returns a WritableStream<string> that writes data to the PTY's input.
+   * Handles encoding the string data before passing it to the underlying write method.
+   *
+   * @returns {WritableStream<string>} A writable stream for the PTY input.
+   * @throws {Error} If the Pty is already closed when the stream is created (the stream will error immediately).
+   */
+  get writable(): WritableStream<string> {
+    if (!this.#ptr) {
+      return new WritableStream({
+        start(controller) {
+          controller.error(new Error("Pty is closed."));
+        },
+        write() { // Also error on write if closed at creation
+          throw new Error("Pty is closed.");
+        },
+      });
+    }
+    // deno-lint-ignore no-this-alias
+    const ptyInstance = this;
+    return new WritableStream<string>({
+      write(chunk, controller) {
+        // Check if Pty is still valid *before* writing
+        if (!ptyInstance.#ptr) {
+          const err = new Error("Pty is closed.");
+          controller.error(err); // Signal error to the writer
+          throw err; // Also throw to stop potential pipelines
+        }
+        try {
+          ptyInstance.write(chunk); // Use the low-level write
+        } catch (e) {
+          controller.error(e); // Signal error to the writer
+          throw e; // Re-throw error
+        }
+      },
+      close() {
+        // Closing the writer doesn't necessarily mean we should close the Pty itself.
+        // It just means no more data will be written via this stream instance.
+        // console.log("[PTY Writable] Stream closed."); // Optional debug log
+      },
+      abort(_reason) {
+        // Similar to close, aborting the writer doesn't automatically close the Pty.
+        // console.log("[PTY Writable] Stream aborted:", reason); // Optional debug log
+      },
+    } /* new ByteLengthQueuingStrategy({ highWaterMark: 1024 * 16 }) */); // Optional: Add queuing strategy if needed
+  }
+
+  /**
+   * Sets the interval for polling the PTY output when using `readableStream()`.
+   * Lower values increase responsiveness but may use slightly more CPU.
+   * Affects streams created *after* this call.
+   * @param ms Polling interval in milliseconds. Defaults to 30. Must be positive.
+   */
+  setPollingInterval(ms: number): void {
+    if (ms > 0) {
+      this.#pollingIntervalMs = ms;
+    } else {
+      console.warn("Polling interval must be positive.");
+    }
+  }
+
+  /**
+   * Gets the current polling interval used by `readableStream()`.
+   * @returns Polling interval in milliseconds.
+   */
+  getPollingInterval(): number {
+    return this.#pollingIntervalMs;
   }
 }

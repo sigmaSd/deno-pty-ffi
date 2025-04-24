@@ -93,8 +93,8 @@ impl PtyReader {
 #[derive(Serialize, Deserialize, Debug)]
 struct Command {
     cmd: String,
-    args: Vec<String>,
-    env: Vec<(String, String)>,
+    args: Option<Vec<String>>,
+    env: Option<std::collections::HashMap<String, String>>,
     cwd: Option<String>,
 }
 
@@ -117,13 +117,16 @@ impl Pty {
         let mut cmd_builder = CommandBuilder::new(command.cmd);
         // https://github.com/wez/wezterm/issues/4205
         cmd_builder.env("PATH", std::env::var("PATH")?);
-        cmd_builder.args(&command.args);
-        match command.cwd {
-            Some(cwd) => cmd_builder.cwd(cwd),
-            None => cmd_builder.cwd(std::env::current_dir()?),
+        if let Some(args) = command.args {
+            cmd_builder.args(&args);
         }
-        for (key, val) in command.env {
-            cmd_builder.env(key, val);
+        if let Some(cwd) = command.cwd {
+            cmd_builder.cwd(cwd);
+        }
+        if let Some(map) = command.env {
+            for (key, val) in map {
+                cmd_builder.env(key, val);
+            }
         }
 
         let (tx_read, rx_read) = unbounded();
@@ -253,7 +256,7 @@ pub unsafe extern "C" fn pty_create(
         let command_slice = unsafe { slice::from_raw_parts(command_ptr, command_len) };
         // Deserialize from the slice
         let command: Command = serde_json::from_slice(command_slice)?;
-        // dbg!("Creating PTY with command: {:?}", command);
+        // dbg!("Creating PTY with command: {:?}", &command);
         let pty = Pty::create(command)?;
         Ok(Box::new(pty))
     })();
@@ -516,8 +519,8 @@ mod tests {
             threads.push(std::thread::spawn(|| {
                 let pty = Pty::create(Command {
                     cmd: "deno".into(),
-                    args: vec!["repl".into()],
-                    env: vec![("NO_COLOR".into(), "1".into())],
+                    args: Some(vec!["repl".into()]),
+                    env: Some([("NO_COLOR".into(), "1".into())].into()),
                     cwd: None,
                 })
                 .unwrap();
