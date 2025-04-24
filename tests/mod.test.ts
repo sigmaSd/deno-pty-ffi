@@ -137,10 +137,10 @@ Deno.test("multibytes chars work correctly", async () => {
 Deno.test("readableStream basic", async () => {
   const line1 = "Hello from PTY stream!";
   const line2 = "Second line.";
-  const pty = new Pty(Deno.build.os === "windows" ? "findstr" : "cat", {
+  const pty = new Pty(Deno.build.os === "windows" ? "cmd" : "bash", {
     args: Deno.build.os === "windows"
       ? ["/c", `echo ${line1} && ping -n 2 127.0.0.1>nul && echo ${line2}`]
-      : [`echo "${line1}"; sleep 0.1; echo "${line2}"`],
+      : ["-c", `echo "${line1}"; sleep 0.1; echo "${line2}"`],
   });
 
   let combinedOutput = "";
