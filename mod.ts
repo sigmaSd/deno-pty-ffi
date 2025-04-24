@@ -12,7 +12,7 @@ import { Pty } from "jsr:@sigma/pty-ffi";
 const pty = new Pty("bash");
 
 // executs ls -la repedetly and shows output
-pty.setPollInterval(500);
+pty.setPollingInterval(500);
 for await (const line of pty.readable) {
   console.log(line);
   pty.write("ls -la\n");
