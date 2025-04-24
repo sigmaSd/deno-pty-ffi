@@ -30,7 +30,7 @@ Deno.addSignalListener("SIGINT", () => {
   Deno.exit();
 });
 
-for await (const line of pty.readableStream()) {
+for await (const line of pty.readable) {
   if (line.includes("Granted") && line.includes("access")) {
     const line_split = line.split(/\s+/);
     const mark = line_split.indexOf("access");

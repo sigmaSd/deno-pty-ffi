@@ -93,7 +93,7 @@ Deno.test("with cwd set", async () => {
 
   let output = "";
   try {
-    for await (const data of pty.readableStream()) {
+    for await (const data of pty.readable) {
       output += data;
     }
     assertStringIncludes(output.trim(), testFileName);
@@ -112,7 +112,7 @@ Deno.test("multibytes chars work correctly", async () => {
   let success = false;
   let accumulatedData = "";
   try {
-    for await (const data of pty.readableStream()) {
+    for await (const data of pty.readable) {
       accumulatedData += data;
       // Trim potential trailing newline from echo
       if (accumulatedData.trim().includes(testString)) {
@@ -146,7 +146,7 @@ Deno.test("readableStream basic", async () => {
   let combinedOutput = "";
   const chunks: string[] = [];
   try {
-    for await (const data of pty.readableStream()) {
+    for await (const data of pty.readable) {
       chunks.push(data);
       combinedOutput += data;
     }
@@ -163,7 +163,7 @@ Deno.test("readableStream handles process exit", async () => {
   const pty = new Pty("echo", { args: ["Exit Test"] });
   let streamEnded = false;
   try {
-    for await (const _data of pty.readableStream()) { /* consume */ }
+    for await (const _data of pty.readable) { /* consume */ }
     streamEnded = true;
   } finally {
     pty.close();
@@ -175,9 +175,9 @@ Deno.test("readableStream handles process exit", async () => {
 });
 
 // --- UPDATED TEST ---
-Deno.test("readableStream closes gracefully if pty closed during read", async () => {
+Deno.test("readableloses gracefully if pty closed during read", async () => {
   const pty = new Pty("sleep", { args: ["5"] }); // Long running command
-  const stream = pty.readableStream();
+  const stream = pty.readable;
   const reader = stream.getReader();
 
   // Start a read, but don't necessarily wait for it here
@@ -227,7 +227,7 @@ Deno.test("writableStream basic", async () => {
   try {
     const readerPromise = (async () => {
       try {
-        for await (const data of pty.readableStream()) {
+        for await (const data of pty.readable) {
           receivedOutput += data;
         }
         readerFinished = true;
@@ -238,7 +238,7 @@ Deno.test("writableStream basic", async () => {
       }
     })();
 
-    const writer = pty.writableStream().getWriter();
+    const writer = pty.writable.getWriter();
     await writer.write(input1);
     await delay(50);
     await writer.write(input2);
@@ -263,7 +263,7 @@ Deno.test("writableStream basic", async () => {
 
 Deno.test("writableStream errors if pty closed during write", async () => {
   const pty = new Pty("sleep", { args: ["5"] });
-  const stream = pty.writableStream();
+  const stream = pty.writable;
   const writer = stream.getWriter();
 
   await writer.ready;
@@ -310,12 +310,12 @@ Deno.test("methods throw after close", () => {
   );
 
   // Reading from a stream created *after* close should also end immediately.
-  const postCloseStream = pty.readableStream();
+  const postCloseStream = pty.readable;
   const reader = postCloseStream.getReader();
   assertRejects(() => reader.read(), Error, "Pty is closed.");
 
   // Writing to a stream created *after* close should reject.
-  const postCloseWritable = pty.writableStream();
+  const postCloseWritable = pty.writable;
   const writer = postCloseWritable.getWriter();
   assertRejects(() => writer.write("test"), Error, "Pty is closed.");
 

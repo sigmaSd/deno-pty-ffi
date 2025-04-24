@@ -304,7 +304,7 @@ export class Pty {
    * @returns {ReadableStream<string>} A readable stream of the PTY output.
    * @throws {Error} If the Pty is already closed when the stream is created (the stream will error immediately).
    */
-  readableStream(): ReadableStream<string> {
+  get readable(): ReadableStream<string> {
     if (!this.#ptr) {
       // Return a stream that's already errored if pty is closed initially
       return new ReadableStream({
@@ -392,7 +392,7 @@ export class Pty {
    * @returns {WritableStream<string>} A writable stream for the PTY input.
    * @throws {Error} If the Pty is already closed when the stream is created (the stream will error immediately).
    */
-  writableStream(): WritableStream<string> {
+  get writable(): WritableStream<string> {
     if (!this.#ptr) {
       return new WritableStream({
         start(controller) {
