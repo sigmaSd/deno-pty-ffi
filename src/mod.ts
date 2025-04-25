@@ -357,6 +357,7 @@ export class Pty {
 
               if (done) {
                 if (!isCancelled) controller.close();
+                // No need to clear timer here, await already finished
                 break; // Exit loop on graceful process end
               }
 
