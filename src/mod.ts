@@ -317,6 +317,15 @@ export class Pty {
     // deno-lint-ignore no-this-alias
     const ptyInstance = this;
     let isCancelled = false; // Flag for cancellation
+    let currentTimeoutId: number | undefined = undefined; // <--- Store timer ID
+
+    // Helper to clear the timeout reliably
+    function clearTimeoutIfActive() {
+      if (currentTimeoutId !== undefined) {
+        clearTimeout(currentTimeoutId);
+        currentTimeoutId = undefined;
+      }
+    }
 
     return new ReadableStream<string>({
       start(controller) {
@@ -328,6 +337,7 @@ export class Pty {
                 if (!isCancelled) { // Avoid closing twice if cancelled already
                   controller.close();
                 }
+                clearTimeoutIfActive();
                 break; // Exit loop if Pty closed externally
               }
 
@@ -336,9 +346,14 @@ export class Pty {
               // Always pause after read attempt
               // IMPORTANT: this needs to be done immmediatly afer read before enqueueuing data
               // This gives the event loop a better chance to process other tasks
-              await new Promise((resolve) =>
-                setTimeout(resolve, ptyInstance.#pollingIntervalMs)
-              );
+              await new Promise<void>((resolve) => { // Use void for clarity
+                // Ensure previous timer is cleared before setting new one (shouldn't be necessary but safe)
+                clearTimeoutIfActive();
+                currentTimeoutId = setTimeout(() => {
+                  currentTimeoutId = undefined; // Clear ID when timer fires naturally
+                  resolve();
+                }, ptyInstance.#pollingIntervalMs);
+              });
 
               if (done) {
                 if (!isCancelled) controller.close();
@@ -351,6 +366,7 @@ export class Pty {
               }
             } catch (e) {
               if (!isCancelled) controller.error(e); // Signal error
+              clearTimeoutIfActive();
               break; // Exit loop on error
             }
           }
@@ -362,7 +378,7 @@ export class Pty {
       cancel() {
         // console.log("[PTY Stream] Stream cancelled:", reason);
         isCancelled = true; // Set cancellation flag
-        // No timer ID to clear in this version
+        clearTimeoutIfActive();
       },
     });
   }
