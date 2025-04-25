@@ -306,7 +306,6 @@ export class Pty {
    */
   get readable(): ReadableStream<string> {
     if (!this.#ptr) {
-      // Return a stream that's already errored if pty is closed initially
       return new ReadableStream({
         start(controller) {
           controller.error(new Error("Pty is closed."));
@@ -317,74 +316,56 @@ export class Pty {
     // Keep a reference to the Pty instance for the stream source
     // deno-lint-ignore no-this-alias
     const ptyInstance = this;
-    let pollTimerId: number | undefined = undefined;
-
-    function clearPollTimer() {
-      if (pollTimerId !== undefined) {
-        clearTimeout(pollTimerId);
-        pollTimerId = undefined;
-      }
-    }
+    let isCancelled = false; // Flag for cancellation
 
     return new ReadableStream<string>({
       start(controller) {
-        // console.log("[PTY Stream] Starting polling..."); // Optional debug log
-        function poll() {
-          // Check if Pty is still valid *before* attempting read
-          // This prevents errors if close() is called concurrently.
-          if (!ptyInstance.#ptr) {
-            // console.log("[PTY Stream] Pty closed externally. Closing stream."); // Optional debug log
-            // If pty was closed externally, we might not get a 'done' signal.
-            // Close the stream gracefully in this case.
-            clearPollTimer();
+        (async () => {
+          while (!isCancelled) { // Check cancellation flag
             try {
-              // Attempt to close, might already be closed if controller errored/closed.
-              controller.close();
-            } catch { /* Ignore if already closed/errored */ }
-            return;
-          }
-
-          try {
-            const result = ptyInstance.read(); // Call the low-level read
-            // console.log("[PTY Stream] Poll result:", result); // Optional debug log
-
-            if (result.done) {
-              // console.log("[PTY Stream] PTY process finished. Closing stream."); // Optional debug log
-              clearPollTimer();
-              controller.close(); // Signal end of stream
-            } else {
-              // Enqueue even empty strings if not done, consistency?
-              // No, only enqueue if there's actual data.
-              if (result.data.length > 0) {
-                controller.enqueue(result.data); // Push data to the stream consumer
+              // Check pointer validity before reading (in case close() was called)
+              if (!ptyInstance.#ptr) {
+                if (!isCancelled) { // Avoid closing twice if cancelled already
+                  controller.close();
+                }
+                break; // Exit loop if Pty closed externally
               }
-              // Schedule next poll: immediate if data, interval if empty
-              const nextPollDelay = result.data.length > 0
-                ? 0
-                : ptyInstance.#pollingIntervalMs;
-              pollTimerId = setTimeout(poll, nextPollDelay);
+
+              const { data, done } = ptyInstance.read();
+
+              // Always pause after read attempt
+              // IMPORTANT: this needs to be done immmediatly afer read before enqueueuing data
+              // This gives the event loop a better chance to process other tasks
+              await new Promise((resolve) =>
+                setTimeout(resolve, ptyInstance.#pollingIntervalMs)
+              );
+
+              if (done) {
+                if (!isCancelled) controller.close();
+                break; // Exit loop on graceful process end
+              }
+
+              // Only enqueue if there's actual data
+              if (data.length > 0) {
+                controller.enqueue(data);
+              }
+            } catch (e) {
+              if (!isCancelled) controller.error(e); // Signal error
+              break; // Exit loop on error
             }
-          } catch (e) {
-            // Handle errors from ptyInstance.read() or if pty was closed between check and read
-            // console.error("[PTY Stream] Error during PTY read poll:", e); // Optional debug log
-            clearPollTimer();
-            controller.error(e); // Signal stream error
           }
-        }
-        // Start the first poll immediately
-        pollTimerId = setTimeout(poll, 0);
+          // Optional: Log exit reason
+          // console.log(`[PTY Stream] Exiting polling loop. Cancelled: ${isCancelled}`);
+        })();
       },
 
-      cancel(_reason) {
-        // console.log("[PTY Stream] Stream cancelled:", reason); // Optional debug log
-        clearPollTimer();
-        // Note: Stream cancellation doesn't automatically close the Pty.
-        // The consumer should call pty.close() if they want to terminate
-        // the underlying process upon cancellation. Consider adding an option?
+      cancel() {
+        // console.log("[PTY Stream] Stream cancelled:", reason);
+        isCancelled = true; // Set cancellation flag
+        // No timer ID to clear in this version
       },
     });
   }
-
   /**
    * Returns a WritableStream<string> that writes data to the PTY's input.
    * Handles encoding the string data before passing it to the underlying write method.
