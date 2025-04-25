@@ -35,7 +35,7 @@ export class Pty {
   /** @internal The opaque pointer to the underlying Rust Pty struct. Null if closed. */
   #ptr: Deno.PointerValue | null;
   /** @internal Configurable polling interval for readableStream */
-  #pollingIntervalMs = 30;
+  #pollingIntervalMs = 100;
 
   /**
    * Creates a new Pty instance and spawns the specified command within it.
@@ -434,7 +434,7 @@ export class Pty {
    * Sets the interval for polling the PTY output when using `readableStream()`.
    * Lower values increase responsiveness but may use slightly more CPU.
    * Affects streams created *after* this call.
-   * @param ms Polling interval in milliseconds. Defaults to 30. Must be positive.
+   * @param ms Polling interval in milliseconds. Defaults to 100. Must be positive.
    */
   setPollingInterval(ms: number): void {
     if (ms > 0) {
