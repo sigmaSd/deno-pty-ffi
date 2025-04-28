@@ -281,7 +281,7 @@ Deno.test("writableStream errors if pty closed during write", async () => {
 Deno.test("polling interval getter/setter", () => {
   const pty = new Pty("echo", { args: ["test"] });
   try {
-    assertEquals(pty.getPollingInterval(), 30);
+    assertEquals(pty.getPollingInterval(), 100); // default value
     pty.setPollingInterval(100);
     assertEquals(pty.getPollingInterval(), 100);
     pty.setPollingInterval(5);
