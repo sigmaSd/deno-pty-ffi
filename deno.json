@@ -17,6 +17,7 @@
     "test:deno:linux:x86_64": "deno task build:linux:x86_64 && export RUST_LIB_PATH=$CARGO_TARGET_DIR/debug && deno test -A"
   },
   "imports": {
-    "@denosaurs/plug": "jsr:@denosaurs/plug@1.0.6"
+    "@denosaurs/plug": "jsr:@denosaurs/plug@1.0.6",
+    "@std/assert": "jsr:@std/assert@^1.0.14"
   }
 }

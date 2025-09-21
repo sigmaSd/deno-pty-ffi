@@ -1,4 +1,4 @@
-import { assert } from "jsr:@std/assert@0.221/assert";
+import { assert } from "@std/assert/assert";
 // Type alias for the library type from ffi.ts
 import type { PtyLib } from "./ffi.ts";
 
@@ -12,7 +12,7 @@ const DECODER = new TextDecoder();
  * null-terminated C string (UTF-8 bytes + trailing '\0').
  * Use this for functions like `pty_write` that expect a CString.
  */
-export function encodeCString(str: string): Uint8Array {
+export function encodeCString(str: string): Uint8Array<ArrayBuffer> {
   const utf8Bytes = ENCODER.encode(str);
   const buffer = new Uint8Array(utf8Bytes.length + 1); // +1 for '\0'
   buffer.set(utf8Bytes, 0);
@@ -25,7 +25,7 @@ export function encodeCString(str: string): Uint8Array {
  * UTF-8 byte buffer (Uint8Array). Does NOT add a null terminator.
  * Use this for functions expecting pointer + length (e.g., `pty_create`, `pty_resize`).
  */
-export function encodePointerLenData<T>(data: T): Uint8Array {
+export function encodePointerLenData<T>(data: T): Uint8Array<ArrayBuffer> {
   const jsonString = JSON.stringify(data);
   return ENCODER.encode(jsonString); // Just the UTF-8 bytes
 }
