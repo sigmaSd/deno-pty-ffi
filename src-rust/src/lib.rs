@@ -187,8 +187,8 @@ impl Pty {
                     }
                 }
             }
-            // Ensure End is sent if reading stops for any reason other than receiver disconnect
-            let _ = tx_read_reader_thread.send(Message::End(12346)); // internal error code
+            // if we got here, it means that probably the process have exited, and the end message have been sent
+            // NOTE: is this correct ?
         });
 
         // Thread for writing to PTY input
