@@ -2,9 +2,13 @@
 
 // deno-lint-ignore-file no-import-prefix
 import { $ } from "jsr:@david/dax@0.43.2";
-import { format, increment, parse } from "jsr:@std/semver@1.0.5";
+import {
+  format,
+  increment,
+  parse,
+  type ReleaseType,
+} from "jsr:@std/semver@1.0.5";
 import metadata from "../deno.json" with { type: "json" };
-import type { ReleaseType } from "jsr:@std/semver@1.0.5/types";
 
 function assertIsAReleaseType(
   value: string | undefined,
