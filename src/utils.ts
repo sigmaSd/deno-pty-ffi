@@ -27,7 +27,7 @@ export function encodeCString(str: string): Uint8Array<ArrayBuffer> {
  */
 export function encodePointerLenData<T>(data: T): Uint8Array<ArrayBuffer> {
   const jsonString = JSON.stringify(data);
-  return ENCODER.encode(jsonString); // Just the UTF-8 bytes
+  return ENCODER.encode(jsonString) as Uint8Array<ArrayBuffer>;
 }
 
 // === Decoding Data FROM Rust ===
