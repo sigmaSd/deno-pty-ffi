@@ -36,9 +36,12 @@ export class Pty {
   #ptr: Deno.PointerValue | null;
   /** @internal Configurable polling interval for readableStream */
   #pollingIntervalMs = 100;
+  #exitCode: number | undefined;
 
   /** The exit code of the process, if it has exited. */
-  exitCode: undefined | number;
+  get exitCode(): undefined | number {
+    return this.#exitCode;
+  }
 
   /**
    * Creates a new Pty instance and spawns the specified command within it.
@@ -134,7 +137,7 @@ export class Pty {
         }
         try {
           const exitCode = decodeCString(dataPtr);
-          this.exitCode = Number.parseInt(exitCode);
+          this.#exitCode = Number.parseInt(exitCode);
           return { data: "", done: true };
         } finally {
           freeRustString(LIBRARY, dataPtr);
