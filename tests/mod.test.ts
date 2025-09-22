@@ -28,7 +28,7 @@ Deno.test("exitCode", async () => {
     for await (const _data of pty.readable) {
       // stuff
     }
-    assertEquals(pty.exitCode, Deno.build.os === "linux" ? 2 : 1);
+    assertEquals(pty.exitCode, Deno.build.os === "darwin" ? 1 : 2);
 
     pty.close();
   }
