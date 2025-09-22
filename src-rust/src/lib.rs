@@ -31,25 +31,30 @@ pub struct Pty {
 #[derive(Clone)]
 struct PtyReader {
     rx_read: Receiver<Message>,
-    done: Cell<bool>,
+    exit_status: Cell<Option<u32>>,
 }
 impl PtyReader {
     fn new(rx_read: Receiver<Message>) -> PtyReader {
         Self {
             rx_read,
-            done: Cell::new(false),
+            exit_status: Cell::new(None),
         }
     }
     //NOTE: this function should not block
     fn read(&self) -> Result<Message> {
-        if self.done.get() {
-            return Ok(Message::End);
+        if let Some(exit_code) = self.exit_status.get() {
+            return Ok(Message::End(exit_code));
         }
 
         let mut msgs: Vec<_> = self.rx_read.try_iter().collect();
 
-        if msgs.contains(&Message::End) {
-            self.done.set(true);
+        let exit_msg = msgs
+            .iter()
+            .find(|msg| matches!(msg, Message::End(_)))
+            .cloned();
+
+        if let Some(Message::End(exit_code)) = exit_msg {
+            self.exit_status.set(Some(exit_code));
 
             // NOTE: We received the END message, this means that the process has exited
             // But there could be some pending messages in the read channel, this is especisally true in windows
@@ -58,10 +63,10 @@ impl PtyReader {
             msgs.extend(self.rx_read.try_iter());
 
             // Filter out the End message itself after collecting potentially pending data
-            msgs.retain(|msg| !matches!(msg, Message::End));
+            msgs.retain(|msg| !matches!(msg, Message::End(_)));
 
             if msgs.is_empty() {
-                return Ok(Message::End); // Truly the end if no data remains
+                return Ok(Message::End(exit_code)); // Truly the end if no data remains
             }
             // If only End was received initially but more data came in the retry,
             // we proceed to bundle the data below.
@@ -98,10 +103,10 @@ struct Command {
     cwd: Option<String>,
 }
 
-#[derive(PartialEq, Eq, Debug)]
+#[derive(PartialEq, Eq, Debug, Clone)]
 enum Message {
     Data(String),
-    End,
+    End(u32),
 }
 
 impl Pty {
@@ -142,8 +147,8 @@ impl Pty {
         // and signal its exit
         let tx_read_c = tx_read.clone();
         std::thread::spawn(move || {
-            let _ = child.wait();
-            let _ = tx_read_c.send(Message::End);
+            let exit_code = child.wait().map(|r| r.exit_code()).unwrap_or(12345); // internal error code
+            let _ = tx_read_c.send(Message::End(exit_code));
         });
 
         // Read the output in another thread.
@@ -155,6 +160,7 @@ impl Pty {
         std::thread::spawn(move || {
             // Reasonably sized buffer
             let mut buf = vec![0u8; 8 * 1024]; // 8KB buffer
+            // TODO: surface the errors back to the user instead of printing
             loop {
                 match reader.read(&mut buf) {
                     Ok(0) => break, // EOF
@@ -182,7 +188,7 @@ impl Pty {
                 }
             }
             // Ensure End is sent if reading stops for any reason other than receiver disconnect
-            let _ = tx_read_reader_thread.send(Message::End);
+            let _ = tx_read_reader_thread.send(Message::End(12346)); // internal error code
         });
 
         // Thread for writing to PTY input
@@ -305,8 +311,9 @@ pub unsafe extern "C" fn pty_read(pty_ptr: *mut Pty, result_ptr: *mut usize) -> 
                 }
             }
         }
-        Ok(Message::End) => {
-            // *result_ptr = std::ptr::null_mut::<c_char>() as _; // Or don't touch it
+        Ok(Message::End(code)) => {
+            let status = CString::new(code.to_string()).expect("failed to create cstring");
+            unsafe { *result_ptr = status.into_raw() as _ };
             99 // Process exited
         }
         Err(err) => {
@@ -544,7 +551,7 @@ mod tests {
                                         break;
                                     }
                                 }
-                                Message::End => {
+                                Message::End(_) => {
                                     tx.send(Err(())).unwrap();
                                     break;
                                 }

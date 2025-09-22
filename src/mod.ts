@@ -37,6 +37,9 @@ export class Pty {
   /** @internal Configurable polling interval for readableStream */
   #pollingIntervalMs = 100;
 
+  /** The exit code of the process, if it has exited. */
+  exitCode: undefined | number;
+
   /**
    * Creates a new Pty instance and spawns the specified command within it.
    * This involves communicating with the Rust FFI layer to create the underlying
@@ -123,8 +126,20 @@ export class Pty {
           freeRustString(LIBRARY, dataPtr);
         }
       }
-      case 99: // Special status code indicating the process has finished
-        return { done: true, data: "" };
+      case 99: { // Special status code indicating the process has finished
+        const dataPtr = readPointerFromResultBuffer(resultPtrBuf);
+        if (!dataPtr) {
+          console.warn("could not read exit code");
+          return { data: "", done: true };
+        }
+        try {
+          const exitCode = decodeCString(dataPtr);
+          this.exitCode = Number.parseInt(exitCode);
+          return { data: "", done: true };
+        } finally {
+          freeRustString(LIBRARY, dataPtr);
+        }
+      }
       case -1: { // Error occurred
         // resultPtrBuf contains the error CString pointer
         const errorMsg = readErrorAndFree(LIBRARY, resultPtrBuf);

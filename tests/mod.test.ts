@@ -9,6 +9,31 @@ import {
 import { delay } from "jsr:@std/async@0.224.0";
 import { Pty } from "../mod.ts";
 
+Deno.test("exitCode", async () => {
+  {
+    const pty = new Pty("ls", {});
+
+    assertEquals(pty.exitCode, undefined);
+    for await (const _data of pty.readable) {
+      // stuff
+    }
+    assertEquals(pty.exitCode, 0);
+
+    pty.close();
+  }
+  {
+    const pty = new Pty("ls", { args: ["--incorrect-flag"] });
+
+    assertEquals(pty.exitCode, undefined);
+    for await (const _data of pty.readable) {
+      // stuff
+    }
+    assertEquals(pty.exitCode, 2);
+
+    pty.close();
+  }
+});
+
 Deno.test("smoke", async () => {
   async function write_and_expect(pty: Pty, toWrite: string, expect: string) {
     pty.write(toWrite);
